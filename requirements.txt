@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+httpx
+python-dotenv
+sqlalchemy>=1.4
+alembic
+asyncpg
+python-telegram-bot==20.6
+pydantic
+pydantic-settings
+pytest
+pytest-asyncio
+aiosqlite
+
