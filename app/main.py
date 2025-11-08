@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 app = FastAPI(
-    title="Data Bundle Purchase System",
+    title="Data Bundle Purchase System(Intejers)",
     description="API for purchasing mobile data bundles via Telegram bot",
     version="1.0.0"
 )
@@ -68,5 +68,5 @@ async def health_check():
 @app.get("/")
 async def root():
     """Root endpoint."""
-    return {"message": "Data Bundle Purchase System API"}
+    return {"message": "Intejers Data Bundle Purchase System API"}
 

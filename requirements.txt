@@ -11,4 +11,4 @@ pydantic-settings
 pytest
 pytest-asyncio
 aiosqlite
-
+apscheduler
