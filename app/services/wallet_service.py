@@ -1,10 +1,11 @@
-"""Wallet service using Supabase repositories."""
+import uuid
+import logging
 from decimal import Decimal
 from app.repository.wallet_repo import WalletRepository
 from app.repository.transaction_repo import TransactionRepository
 from app.core.constants import TransactionStatus, TransactionType
 
-
+logger = logging.getLogger(__name__)
 class WalletService:
     """Service for wallet operations using Supabase."""
 
@@ -14,11 +15,11 @@ class WalletService:
 
     async def get_or_create_wallet(self, user_id: str) -> dict:
         """Get or create wallet for user."""
-        return self.wallet_repo.get_or_create_wallet(user_id)
+        return await self.wallet_repo.get_or_create_wallet(user_id)
 
     async def get_balance(self, user_id: str) -> Decimal:
         """Get wallet balance for user."""
-        return self.wallet_repo.get_balance(user_id)
+        return await self.wallet_repo.get_balance(user_id)
 
     async def credit_wallet(
         self,
@@ -43,11 +44,10 @@ class WalletService:
         Raises:
             ValueError: If transaction is already processed (idempotency check)
         """
-        import logging
-        logger = logging.getLogger(__name__)
+       
         
         # First, check transaction status to prevent double crediting
-        transaction = self.transaction_repo.get_by_reference(reference)
+        transaction = await self.transaction_repo.get_by_reference(reference)
         if not transaction:
             raise ValueError(f"Transaction not found: {reference}")
         
@@ -69,9 +69,9 @@ class WalletService:
                     f"Transaction {reference} has SUCCESS status but no wallet_credited flag. "
                     f"Skipping credit to prevent double crediting."
                 )
-                wallet = self.wallet_repo.get_by_user_id(user_id)
+                wallet = await self.wallet_repo.get_by_user_id(user_id)
                 if not wallet:
-                    wallet = self.wallet_repo.get_or_create_wallet(user_id)
+                    wallet = await self.wallet_repo.get_or_create_wallet(user_id)
                 return wallet
         
         # If transaction is FAILED, don't credit
@@ -80,16 +80,16 @@ class WalletService:
         
         # Transaction is pending/processing - proceed with credit
         # Get or create wallet
-        wallet = self.wallet_repo.get_or_create_wallet(user_id)
+        wallet = await self.wallet_repo.get_or_create_wallet(user_id)
         
         # Credit balance
-        wallet = self.wallet_repo.credit_balance(wallet["id"], amount)
-        
+        wallet = await self.wallet_repo.credit_balance(wallet["id"], amount)
+
         # Update transaction status to SUCCESS
         # Re-check status before updating to handle race conditions
         try:
             # Re-fetch transaction to check if another process already updated it
-            updated_transaction = self.transaction_repo.get_by_reference(reference)
+            updated_transaction = await self.transaction_repo.get_by_reference(reference)
             if updated_transaction and updated_transaction["status"] == TransactionStatus.SUCCESS.value:
                 # Another process already processed this - rollback the credit
                 logger.warning(
@@ -98,13 +98,13 @@ class WalletService:
                 )
                 # Debit the amount we just credited
                 try:
-                    self.wallet_repo.debit_balance(wallet["id"], amount)
+                    await self.wallet_repo.debit_balance(wallet["id"], amount)
                 except ValueError as e:
                     # If debit fails (insufficient balance), log error
                     logger.error(f"Failed to rollback credit for transaction {reference}: {e}")
                 
                 # Return wallet without the credit
-                return self.wallet_repo.get_by_user_id(user_id)
+                return (await self.wallet_repo.get_by_user_id(user_id))
             
             # Safe to update transaction status
             current_payload = transaction.get("raw_payload") or {}
@@ -118,7 +118,7 @@ class WalletService:
                     "new_balance": str(wallet["balance"])
                 }
             
-            self.transaction_repo.update_transaction_status(
+            await self.transaction_repo.update_transaction_status(
                 transaction["id"],
                 TransactionStatus.SUCCESS.value,
                 raw_payload=current_payload
@@ -152,12 +152,12 @@ class WalletService:
             ValueError: If insufficient balance
         """
         # Get wallet
-        wallet = self.wallet_repo.get_by_user_id(user_id)
+        wallet = await self.wallet_repo.get_by_user_id(user_id)
         if not wallet:
             raise ValueError("Wallet not found")
         
         # Debit balance (this will raise ValueError if insufficient)
-        wallet = self.wallet_repo.debit_balance(wallet["id"], amount)
+        wallet = await self.wallet_repo.debit_balance(wallet["id"], amount)
         
         return wallet
 
@@ -179,15 +179,13 @@ class WalletService:
             Updated wallet
         """
         # Get or create wallet
-        wallet = self.wallet_repo.get_or_create_wallet(user_id)
+        wallet = await self.wallet_repo.get_or_create_wallet(user_id)
         
         # Credit balance
-        wallet = self.wallet_repo.credit_balance(wallet["id"], amount)
+        wallet = await self.wallet_repo.credit_balance(wallet["id"], amount)
         
         # Create refund transaction
-        import uuid
-        
-        self.transaction_repo.create_transaction(
+        await self.transaction_repo.create_transaction(
             user_id=user_id,
             transaction_type=TransactionType.REFUND.value,
             amount=amount,

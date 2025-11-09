@@ -1,4 +1,3 @@
-"""User API endpoints using Supabase repositories."""
 from fastapi import APIRouter, HTTPException
 from app.repository.user_repo import UserRepository
 from app.repository.order_repo import OrderRepository
@@ -22,7 +21,7 @@ async def ensure_user(
     user_repo = UserRepository()
     referral_service = ReferralService()
     
-    user, is_new_user = user_repo.get_or_create(telegram_id, name)
+    user, is_new_user = await user_repo.get_or_create(telegram_id, name)
     
     if is_new_user:
         # Generate referral code for new user
@@ -57,17 +56,17 @@ async def get_user_history(
     order_repo = OrderRepository()
     
     # Get user
-    user = user_repo.get_by_telegram_id(telegram_id)
+    user = await user_repo.get_by_telegram_id(telegram_id)
     
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
     # Get transactions
-    transactions = transaction_repo.get_by_user_id(user["id"], limit=limit)
+    transactions = await transaction_repo.get_by_user_id(user["id"], limit=limit)
     
     # Get orders
-    orders = order_repo.get_by_user_id(user["id"], limit=limit)
-    
+    orders = await order_repo.get_by_user_id(user["id"], limit=limit)
+
     return {
         "transactions": [
             {

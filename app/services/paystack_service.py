@@ -156,6 +156,35 @@ class PaystackService:
             
             return data
     
+    async def verify_transaction(self, reference: str) -> Dict:
+        """
+        Verify a transaction with Paystack by checking its status.
+        
+        Args:
+            reference: Paystack transaction reference
+            
+        Returns:
+            Paystack API response with transaction details
+        """
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{self.BASE_URL}/transaction/verify/{reference}",
+                headers=self.headers,
+                timeout=30.0
+            )
+            
+            try:
+                data = response.json()
+            except Exception:
+                response.raise_for_status()
+                raise
+            
+            if response.status_code >= 400:
+                error_msg = data.get("message", "Unknown error")
+                raise ValueError(f"Paystack verification error ({response.status_code}): {error_msg}")
+            
+            return data
+    
     def format_ghana_phone(self, phone: str) -> str:
        """Convert 0551234567 to +233551234567"""
        if phone.startswith("0"):

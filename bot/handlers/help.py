@@ -15,10 +15,10 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• History - View transaction and order history\n\n"
         "📱 Supported Networks:\n"
         "• MTN\n"
-        "• Vodafone\n"
+        "• Telecel\n"
         "• AirtelTigo\n\n"
         "💰 Payment Methods:\n"
-        "• Mobile Money (MTN, Vodafone, AirtelTigo)\n\n"
+        "• Mobile Money (MTN, Telecel, AirtelTigo)\n\n"
         "❓ Need more help?\n\n"
         " ⚠️ IMPORTANT NOTICE:\n"
 
@@ -32,7 +32,7 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         "• Please verify your phone number carefully before making a purchase.\n\n"
         "Contact the admin for assistance.\n"
-        "Help Bot: @tex_tar_bot"
+        "Admin: @dae50n"
     )
     
     await update.message.reply_text(help_text)

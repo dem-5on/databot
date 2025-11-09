@@ -1,4 +1,3 @@
-"""Bundle sync service using Supabase repositories."""
 from decimal import Decimal
 from app.repository.bundle_repo import BundleRepository
 from app.services.datamart_client import DatamartClient

@@ -1,16 +1,18 @@
 import uuid
+import logging
 from decimal import Decimal
 from pydantic import BaseModel
-from fastapi import APIRouter, HTTPException, Request
-from app.repository.user_repo import UserRepository
-from app.repository.transaction_repo import TransactionRepository
+from fastapi import APIRouter, HTTPException
 from app.services.notifier import NotifierService
+from app.repository.user_repo import UserRepository
 from app.services.wallet_service import WalletService
 from app.services.paystack_service import PaystackService
+from app.services.referral_service import ReferralService
 from app.core.constants import TransactionType, TransactionStatus
+from app.repository.transaction_repo import TransactionRepository
+
 
 router = APIRouter()
-
 
 class DepositInitRequest(BaseModel):
     telegram_id: str
@@ -33,13 +35,13 @@ async def init_deposit(request: DepositInitRequest):
     transaction_repo = TransactionRepository()
     
     # Get or create user
-    user, _ = user_repo.get_or_create(request.telegram_id)
+    user, _ = await user_repo.get_or_create(request.telegram_id)
     
     # Generate unique reference
-    reference = f"DEP-{uuid.uuid4()}"
+    reference = f"IDH-{uuid.uuid4()}"
     
     # Create transaction record
-    transaction = transaction_repo.create_transaction(
+    transaction = await transaction_repo.create_transaction(
         user_id=user["id"],
         transaction_type=TransactionType.DEPOSIT.value,
         amount=request.amount,
@@ -53,8 +55,8 @@ async def init_deposit(request: DepositInitRequest):
     # Create Paystack charge
     paystack_service = PaystackService()
     try:
-        # Use a dummy email if user doesn't have one
-        email = f"user_{request.telegram_id}@databot.com"
+        # Use this email if user doesn't have one
+        email = f"user_{request.telegram_id}@integers.com"
         
         paystack_response = await paystack_service.create_mobile_money_charge(
             email=email,
@@ -64,7 +66,7 @@ async def init_deposit(request: DepositInitRequest):
         )
         
         # Store Paystack response in transaction
-        transaction_repo.update_transaction_status(
+        await transaction_repo.update_transaction_status(
             transaction["id"],
             TransactionStatus.PENDING.value,
             raw_payload=paystack_response
@@ -77,7 +79,7 @@ async def init_deposit(request: DepositInitRequest):
             "display_text": paystack_response.get("data", {}).get("display_text", "You'll receive a MoMo prompt; approve it to complete.")
         }
     except Exception as e:
-        transaction_repo.update_transaction_status(
+        await transaction_repo.update_transaction_status(
             transaction["id"],
             TransactionStatus.FAILED.value,
             raw_payload={"error": str(e)}
@@ -91,7 +93,7 @@ async def get_balance(telegram_id: str):
     user_repo = UserRepository()
     wallet_service = WalletService()
     
-    user = user_repo.get_by_telegram_id(telegram_id)
+    user = await user_repo.get_by_telegram_id(telegram_id)
     
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -114,7 +116,7 @@ async def confirm_deposit(request: DepositConfirmRequest):
     wallet_service = WalletService()
     
     # Get transaction
-    transaction = transaction_repo.get_by_reference(request.reference)
+    transaction = await transaction_repo.get_by_reference(request.reference)
     
     if not transaction:
         raise HTTPException(status_code=404, detail="Transaction not found")
@@ -154,7 +156,6 @@ async def confirm_deposit(request: DepositConfirmRequest):
         response_status = submit_response.get("data", {}).get("status")
         
         if response_status == "success":
-            # Payment successful - credit wallet (idempotent operation)
             # credit_wallet will check transaction status and prevent double crediting
             try:
                 await wallet_service.credit_wallet(
@@ -186,7 +187,7 @@ async def confirm_deposit(request: DepositConfirmRequest):
             }
             
     except Exception as e:
-        transaction_repo.update_transaction_status(
+        await transaction_repo.update_transaction_status(
             transaction["id"],
             TransactionStatus.FAILED.value,
             raw_payload={"otp_error": str(e)}
@@ -205,7 +206,7 @@ async def verify_deposit(reference: str):
     paystack_service = PaystackService()
     
     # Get transaction
-    transaction = transaction_repo.get_by_reference(reference)
+    transaction = await transaction_repo.get_by_reference(reference)
     
     if not transaction:
         raise HTTPException(status_code=404, detail="Transaction not found")
@@ -253,8 +254,7 @@ async def verify_deposit(reference: str):
                 )
                 
                 # Re-fetch transaction to check if it was actually credited
-                # (it might have been credited by webhook in the meantime)
-                updated_transaction = transaction_repo.get_by_reference(reference)
+                updated_transaction = await transaction_repo.get_by_reference(reference)
                 was_just_credited = (
                     updated_transaction and 
                     updated_transaction["status"] == TransactionStatus.SUCCESS.value and
@@ -262,10 +262,8 @@ async def verify_deposit(reference: str):
                 )
                 
                 # Only award referral bonus and notify if we just credited
-                # (to avoid duplicate notifications if webhook already processed it)
                 if was_just_credited:
                     # Award referral bonus
-                    from app.services.referral_service import ReferralService
                     referral_service = ReferralService()
                     await referral_service.award_referral_bonus(transaction["user_id"])
                     
@@ -282,7 +280,6 @@ async def verify_deposit(reference: str):
                         )
                 else:
                     # Wallet was already credited by another process (likely webhook)
-                    import logging
                     logging.info(f"Transaction {reference} was already credited by another process")
             
             except ValueError as e:
@@ -305,7 +302,7 @@ async def verify_deposit(reference: str):
             }
         elif paystack_status == "failed":
             # Payment failed
-            transaction_repo.update_transaction_status(
+            await transaction_repo.update_transaction_status(
                 transaction["id"],
                 TransactionStatus.FAILED.value,
                 raw_payload=updated_payload

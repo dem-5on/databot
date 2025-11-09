@@ -4,6 +4,7 @@ import string
 import secrets
 import logging
 from decimal import Decimal
+from app.services.notifier import NotifierService
 from app.repository.user_repo import UserRepository
 from app.repository.referral_repo import ReferralRepository
 from app.repository.transaction_repo import TransactionRepository
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 class ReferralService:
     """Service for handling referral operations using Supabase."""
 
-    REFERRAL_BONUS_AMOUNT = Decimal("0.10")  # GHS 0.1 = 10 pesewas
+    REFERRAL_BONUS_AMOUNT = Decimal("1.0")
     REFERRAL_CODE_LENGTH = 8
 
     def __init__(self):
@@ -33,7 +34,7 @@ class ReferralService:
 
     async def get_or_create_referral_code(self, user_id: str) -> str:
         """Get or create referral code for user."""
-        user = self.user_repo.get_by_id(user_id)
+        user = await self.user_repo.get_by_id(user_id)
         
         if not user:
             raise ValueError("User not found")
@@ -48,9 +49,9 @@ class ReferralService:
             referral_code = ReferralService.generate_referral_code()
             
             # Check if code already exists
-            existing = self.user_repo.get_by_field("referral_code", referral_code)
+            existing = await self.user_repo.get_by_field("referral_code", referral_code)
             if not existing:
-                self.user_repo.update_user(user_id, referral_code=referral_code)
+                await self.user_repo.update_user(user_id, referral_code=referral_code)
                 return referral_code
         
         raise ValueError("Failed to generate unique referral code")
@@ -71,7 +72,7 @@ class ReferralService:
             True if referral was registered, False if code invalid or user already referred
         """
         # Find referrer by code
-        referrer = self.user_repo.get_by_field("referral_code", referral_code)
+        referrer = await self.user_repo.get_by_field("referral_code", referral_code)
         
         if not referrer:
             return False  # Invalid referral code
@@ -81,7 +82,7 @@ class ReferralService:
             return False
         
         # Check if user was already referred
-        referred_user = self.user_repo.get_by_id(referred_user_id)
+        referred_user = await self.user_repo.get_by_id(referred_user_id)
         if not referred_user:
             return False
         
@@ -89,14 +90,14 @@ class ReferralService:
             return False  # User already referred
         
         # Check if this referral already exists
-        existing_referral = self.referral_repo.get_by_referred_id(referred_user_id)
+        existing_referral = await self.referral_repo.get_by_referred_id(referred_user_id)
         if existing_referral:
             return False  # Referral already registered
         
         # Register referral
-        self.user_repo.update_user(referred_user_id, referred_by=referrer["id"])
+        await self.user_repo.update_user(referred_user_id, referred_by=referrer["id"])
         
-        self.referral_repo.create_referral(
+        await self.referral_repo.create_referral(
             referrer_id=referrer["id"],
             referred_id=referred_user_id,
             referral_code=referral_code,
@@ -119,19 +120,19 @@ class ReferralService:
             True if bonus was awarded, False if no referral or bonus already paid
         """
         # Get user
-        user = self.user_repo.get_by_id(user_id)
+        user = await self.user_repo.get_by_id(user_id)
         
         if not user or not user.get("referred_by"):
             return False  # No referrer
         
         # Find the referral record
-        referral = self.referral_repo.get_by_referred_id(user_id)
+        referral = await self.referral_repo.get_by_referred_id(user_id)
         
         if not referral or referral.get("bonus_paid"):
             return False  # Referral not found or bonus already paid
         
         # Check if this is the user's first successful transaction
-        successful_transactions = self.transaction_repo.get_by_user_id(user_id, limit=100)
+        successful_transactions = await self.transaction_repo.get_by_user_id(user_id, limit=100)
         successful_transactions = [
             t for t in successful_transactions
             if t.get("status") == TransactionStatus.SUCCESS.value
@@ -148,7 +149,7 @@ class ReferralService:
             bonus_reference = f"REF-{uuid.uuid4()}"
             
             # Create transaction record for referral bonus
-            self.transaction_repo.create_transaction(
+            await self.transaction_repo.create_transaction(
                 user_id=referrer_id,
                 transaction_type=TransactionType.REFERRAL_BONUS.value,
                 amount=self.REFERRAL_BONUS_AMOUNT,
@@ -169,12 +170,11 @@ class ReferralService:
             )
             
             # Mark referral bonus as paid
-            self.referral_repo.mark_bonus_paid(referral["id"])
+            await self.referral_repo.mark_bonus_paid(referral["id"])
             
             # Notify referrer about bonus
             try:
-                from app.services.notifier import NotifierService
-                referrer = self.user_repo.get_by_id(referrer_id)
+                referrer = await self.user_repo.get_by_id(referrer_id)
                 
                 if referrer:
                     await NotifierService.send_user_message(
@@ -196,7 +196,7 @@ class ReferralService:
 
     async def get_user_referrals(self, user_id: str) -> list:
         """Get list of users referred by this user."""
-        referrals = self.referral_repo.get_by_referrer_id(user_id)
+        referrals = await self.referral_repo.get_by_referrer_id(user_id)
         
         return [
             {

@@ -1,7 +1,10 @@
-from typing import Optional, List, Dict, Any
+import logging
 from uuid import uuid4
 from decimal import Decimal
+from typing import Optional, List, Dict, Any
 from app.repository.base import BaseRepository
+
+logger = logging.getLogger(__name__)
 
 
 class BundleRepository(BaseRepository):
@@ -10,23 +13,38 @@ class BundleRepository(BaseRepository):
     def __init__(self):
         super().__init__("bundles")
     
-    def get_by_network(self, network: str, active_only: bool = True) -> List[Dict[str, Any]]:
+    async def get_by_network(
+        self, 
+        network: str, 
+        active_only: bool = True
+    ) -> List[Dict[str, Any]]:
         """Get bundles by network."""
-        query = self.client.table(self.table_name).select("*").eq("network", network)
-        if active_only:
-            query = query.eq("active", True)
-        response = query.execute()
-        return response.data if response.data else []
+        try:
+            query = self.client.table(self.table_name).select("*").eq("network", network)
+            if active_only:
+                query = query.eq("active", True)
+            response = await query.execute()
+            return response.data if response.data else []
+        except Exception as e:
+            logger.error(f"Error fetching bundles for network {network}: {str(e)}")
+            return []
     
-    def get_active_bundles(self, network: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_active_bundles(
+        self, 
+        network: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
         """Get active bundles, optionally filtered by network."""
-        query = self.client.table(self.table_name).select("*").eq("active", True)
-        if network:
-            query = query.eq("network", network)
-        response = query.order("price", desc=False).execute()
-        return response.data if response.data else []
+        try:
+            query = self.client.table(self.table_name).select("*").eq("active", True)
+            if network:
+                query = query.eq("network", network)
+            response = await query.order("price", desc=False).execute()
+            return response.data if response.data else []
+        except Exception as e:
+            logger.error(f"Error fetching active bundles: {str(e)}")
+            return []
     
-    def upsert_bundle(
+    async def upsert_bundle(
         self,
         network: str,
         capacity: str,
@@ -34,36 +52,250 @@ class BundleRepository(BaseRepository):
         price: Decimal,
         currency: str = "GHS",
         active: bool = True
-    ) -> Dict[str, Any]:
-        """Upsert a bundle (insert or update based on network + capacity)."""
-        # First, try to find existing bundle with same network and capacity
-        existing = (
-            self.client.table(self.table_name)
-            .select("*")
-            .eq("network", network)
-            .eq("capacity", capacity)
-            .execute()
-        )
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Upsert a bundle (insert or update based on network + capacity).
         
-        bundle_data = {
-            "network": network,
-            "capacity": capacity,
-            "mb": mb,
-            "price": str(price),
-            "currency": currency,
-            "active": active
-        }
+        This method will:
+        1. Check if a bundle exists with the same network and capacity
+        2. If exists, update it
+        3. If not, create a new one
         
-        if existing.data:
-            # Update existing bundle
-            bundle_id = existing.data[0]["id"]
-            return self.update(bundle_id, bundle_data)
-        else:
-            # Create new bundle
-            bundle_data["id"] = str(uuid4())
-            return self.create(bundle_data)
+        Args:
+            network: Network name (MTN, VODAFONE, AIRTELTIGO)
+            capacity: Bundle capacity (e.g., "1GB", "5GB")
+            mb: Bundle size in MB
+            price: Bundle price
+            currency: Currency (default: GHS)
+            active: Whether bundle is active
+            
+        Returns:
+            The created or updated bundle data, or None if operation fails
+        """
+        try:
+            # First, try to find existing bundle with same network and capacity
+            existing_response = await (
+                self.client.table(self.table_name)
+                .select("*")
+                .eq("network", network)
+                .eq("capacity", capacity)
+                .execute()
+            )
+            
+            bundle_data = {
+                "network": network,
+                "capacity": capacity,
+                "mb": mb,
+                "price": str(price),
+                "currency": currency,
+                "active": active
+            }
+            
+            if existing_response.data and len(existing_response.data) > 0:
+                # Update existing bundle
+                bundle_id = existing_response.data[0]["id"]
+                logger.info(f"Updating existing bundle {bundle_id} for {network} - {capacity}")
+                
+                # Verify bundle still exists before updating
+                verify_response = await (
+                    self.client.table(self.table_name)
+                    .select("id")
+                    .eq("id", bundle_id)
+                    .execute()
+                )
+                
+                if not verify_response.data:
+                    logger.warning(f"Bundle {bundle_id} no longer exists, creating new one")
+                    # If bundle was deleted, create a new one
+                    bundle_data["id"] = str(uuid4())
+                    return await self.create(bundle_data)
+                
+                return await self.update(bundle_id, bundle_data)
+            else:
+                # Create new bundle
+                bundle_data["id"] = str(uuid4())
+                logger.info(f"Creating new bundle for {network} - {capacity}")
+                return await self.create(bundle_data)
+                
+        except Exception as e:
+            logger.error(f"Error upserting bundle {network} - {capacity}: {str(e)}")
+            return None
     
-    def get_by_id(self, bundle_id: str) -> Optional[Dict[str, Any]]:
+    async def get_by_id(self, bundle_id: str) -> Optional[Dict[str, Any]]:
         """Get bundle by ID."""
-        return super().get_by_id(bundle_id)
-
+        try:
+            response = await (
+                self.client.table(self.table_name)
+                .select("*")
+                .eq("id", bundle_id)
+                .execute()
+            )
+            
+            if response.data and len(response.data) > 0:
+                return response.data[0]
+            return None
+        except Exception as e:
+            logger.error(f"Error fetching bundle {bundle_id}: {str(e)}")
+            return None
+            
+    async def update(self, bundle_id: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Update a bundle with error handling.
+        
+        Args:
+            bundle_id: The ID of the bundle to update
+            data: Dictionary containing the fields to update
+            
+        Returns:
+            The updated bundle data, or None if update fails
+        """
+        try:
+            response = await (
+                self.client.table(self.table_name)
+                .update(data)
+                .eq("id", bundle_id)
+                .execute()
+            )
+                
+            if not response.data or len(response.data) == 0:
+                logger.warning(f"Update returned no data for bundle {bundle_id}")
+                return None
+                
+            logger.info(f"Successfully updated bundle {bundle_id}")
+            return response.data[0]
+            
+        except Exception as e:
+            logger.error(f"Error updating bundle {bundle_id}: {str(e)}")
+            return None
+            
+    async def create(self, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Create a new bundle with error handling.
+        
+        Args:
+            data: Dictionary containing the bundle data
+            
+        Returns:
+            The created bundle data, or None if creation fails
+        """
+        try:
+            response = await (
+                self.client.table(self.table_name)
+                .insert(data)
+                .execute()
+            )
+            
+            if not response.data or len(response.data) == 0:
+                logger.error("Create returned no data")
+                return None
+                
+            logger.info(f"Successfully created bundle {data.get('id')}")
+            return response.data[0]
+            
+        except Exception as e:
+            logger.error(f"Error creating bundle: {str(e)}")
+            return None
+    
+    async def deactivate_bundle(self, bundle_id: str) -> bool:
+        """
+        Deactivate a bundle (soft delete).
+        
+        Args:
+            bundle_id: The ID of the bundle to deactivate
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        result = await self.update(bundle_id, {"active": False})
+        return result is not None
+    
+    async def activate_bundle(self, bundle_id: str) -> bool:
+        """
+        Activate a bundle.
+        
+        Args:
+            bundle_id: The ID of the bundle to activate
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        result = await self.update(bundle_id, {"active": True})
+        return result is not None
+    
+    async def bulk_deactivate_by_network(self, network: str) -> int:
+        """
+        Deactivate all bundles for a specific network.
+        Useful when syncing to mark old bundles as inactive.
+        
+        Args:
+            network: Network name
+            
+        Returns:
+            Number of bundles deactivated
+        """
+        try:
+            response = await (
+                self.client.table(self.table_name)
+                .update({"active": False})
+                .eq("network", network)
+                .eq("active", True)
+                .execute()
+            )
+            
+            count = len(response.data) if response.data else 0
+            logger.info(f"Deactivated {count} bundles for {network}")
+            return count
+            
+        except Exception as e:
+            logger.error(f"Error bulk deactivating bundles for {network}: {str(e)}")
+            return 0
+    
+    async def delete_by_id(self, bundle_id: str) -> bool:
+        """
+        Hard delete a bundle by ID.
+        
+        Args:
+            bundle_id: The ID of the bundle to delete
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            response = await (
+                self.client.table(self.table_name)
+                .delete()
+                .eq("id", bundle_id)
+                .execute()
+            )
+            
+            success = response.data is not None
+            if success:
+                logger.info(f"Successfully deleted bundle {bundle_id}")
+            else:
+                logger.warning(f"No bundle found to delete with id {bundle_id}")
+                
+            return success
+            
+        except Exception as e:
+            logger.error(f"Error deleting bundle {bundle_id}: {str(e)}")
+            return False
+    
+    async def get_all_bundles(self, active_only: bool = False) -> List[Dict[str, Any]]:
+        """
+        Get all bundles from the database.
+        
+        Args:
+            active_only: If True, only return active bundles
+            
+        Returns:
+            List of bundle dictionaries
+        """
+        try:
+            query = self.client.table(self.table_name).select("*")
+            if active_only:
+                query = query.eq("active", True)
+            response = await query.order("network").order("price").execute()
+            return response.data if response.data else []
+        except Exception as e:
+            logger.error(f"Error fetching all bundles: {str(e)}")
+            return []

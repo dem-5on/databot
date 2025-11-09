@@ -1,6 +1,7 @@
-"""Admin task API endpoints using Supabase repositories."""
 from fastapi import APIRouter, BackgroundTasks
 from app.services.bundle_sync import BundleSyncService
+from app.services.datamart_client import DatamartClient
+from app.services.paystack_service import PaystackService
 
 router = APIRouter()
 
@@ -34,7 +35,6 @@ async def sync_bundles(
 @router.get("/health/datamart")
 async def check_datamart_health():
     """Check DatamartGH API health."""
-    from app.services.datamart_client import DatamartClient
     
     client = DatamartClient()
     try:
@@ -55,12 +55,11 @@ async def check_datamart_health():
 @router.get("/health/paystack")
 async def check_paystack_health():
     """Check Paystack API health."""
-    from app.services.paystack_service import PaystackService
     
     service = PaystackService()
     try:
         # Simple health check - verify service can be instantiated
-        # In production, you might want to call a Paystack endpoint
+        await service.verify_connection()
         return {
             "status": "healthy",
             "message": "Paystack service is configured"

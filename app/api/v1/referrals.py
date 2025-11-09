@@ -12,7 +12,7 @@ async def get_referral_code(telegram_id: str):
     user_repo = UserRepository()
     referral_service = ReferralService()
     
-    user = user_repo.get_by_telegram_id(telegram_id)
+    user = await user_repo.get_by_telegram_id(telegram_id)
     
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -33,7 +33,7 @@ async def get_referrals(telegram_id: str):
     user_repo = UserRepository()
     referral_service = ReferralService()
     
-    user = user_repo.get_by_telegram_id(telegram_id)
+    user = await user_repo.get_by_telegram_id(telegram_id)
     
     if not user:
         raise HTTPException(status_code=404, detail="User not found")

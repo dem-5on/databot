@@ -37,6 +37,7 @@ from bot.handlers.bundles import (
 from bot.handlers.history import history_handler
 from bot.handlers.help import help_handler
 from bot.handlers.referral import referral_command
+from telegram.error import TimedOut, NetworkError, RetryAfter
 
 
 async def handle_keyboard_button_exit(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -59,6 +60,50 @@ async def handle_keyboard_button_exit(update: Update, context: ContextTypes.DEFA
     # Note: "➕ Deposit" and "🌐 Bundles" will start new conversations, handled by entry points
     
     return ConversationHandler.END
+
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Global error handler for Telegram API errors.
+    Handles timeouts, network errors, and other Telegram API issues gracefully.
+    """
+    error = context.error
+    
+    # Log the error
+    if isinstance(error, TimedOut):
+        logger.warning(f"Telegram API timeout: {error}")
+    elif isinstance(error, NetworkError):
+        logger.warning(f"Telegram API network error: {error}")
+    elif isinstance(error, RetryAfter):
+        logger.warning(f"Telegram API rate limit: {error}")
+    else:
+        logger.error(f"Unhandled Telegram error: {error}", exc_info=error)
+    
+    # Try to inform the user if we have an update object
+    if update and isinstance(update, Update):
+        try:
+            if update.message:
+                # Try to send a message, but don't fail if it times out again
+                try:
+                    await update.message.reply_text(
+                        "⚠️ A temporary network issue occurred. "
+                        "Your request was processed, but we couldn't send a confirmation message. "
+                        "Please check your balance or try again."
+                    )
+                except Exception:
+                    # If sending the error message also fails, just log it
+                    logger.debug("Could not send error notification message to user")
+            elif update.callback_query:
+                try:
+                    await update.callback_query.answer(
+                        "⚠️ Network issue occurred. Please try again.",
+                        show_alert=False
+                    )
+                except Exception:
+                    logger.debug("Could not send error notification to callback query")
+        except Exception as e:
+            # If everything fails, just log it
+            logger.debug(f"Could not send error notification: {e}")
 
 # Enable logging
 logging.basicConfig(
@@ -136,6 +181,9 @@ async def main():
     
     # Set up handlers
     setup_handlers(application)
+    
+    # Add global error handler
+    application.add_error_handler(error_handler)
     
     # Start the bot
     logger.info("Starting bot...")

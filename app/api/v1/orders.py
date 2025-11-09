@@ -21,7 +21,7 @@ async def create_order(request: CreateOrderRequest):
     user_repo = UserRepository()
     
     # Get user
-    user = user_repo.get_by_telegram_id(request.telegram_id)
+    user = await user_repo.get_by_telegram_id(request.telegram_id)
     
     if not user:
         raise HTTPException(status_code=404, detail="User not found")

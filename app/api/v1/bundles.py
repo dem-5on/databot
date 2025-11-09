@@ -14,9 +14,9 @@ async def get_bundles(network: Optional[str] = None):
     bundle_repo = BundleRepository()
     
     if network:
-        bundles = bundle_repo.get_by_network(network.upper(), active_only=True)
+        bundles = await bundle_repo.get_by_network(network.upper(), active_only=True)
     else:
-        bundles = bundle_repo.get_active_bundles()
+        bundles = await bundle_repo.get_active_bundles()
     
     return {
         "bundles": [

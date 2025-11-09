@@ -1,8 +1,12 @@
 import httpx
+import logging
+import asyncio
 from decimal import Decimal
 from telegram import Update
 from app.core.config import settings
 from telegram.ext import ContextTypes, ConversationHandler
+
+logger = logging.getLogger(__name__)
 
 # Conversation states
 AMOUNT, PHONE, OTP = range(3)
@@ -159,7 +163,10 @@ async def deposit_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Call backend API
     try:
+        
         async with httpx.AsyncClient() as client:
+            logger.info(f"Initializing deposit: telegram_id={telegram_id}, amount={amount}, phone={normalized_phone}, provider={network}")
+            
             response = await client.post(
                 f"{settings.BACKEND_API_URL}/api/v1/wallet/deposit/init",
                 json={
@@ -170,25 +177,41 @@ async def deposit_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 },
                 timeout=30.0
             )
+            
+            logger.info(f"Deposit init response status: {response.status_code}")
+            
             response.raise_for_status()
             data = response.json()
             
-            display_text = data.get("display_text", "Please approve the mobile money prompt on your phone")
+            logger.info(f"Deposit init response data: {data}")
+            
+            # Get display_text from nested response structure
+            paystack_response = data.get("paystack_response", {})
+            paystack_data = paystack_response.get("data", {})
+            display_text = paystack_data.get("display_text") or data.get("display_text") or "Please approve the mobile money prompt on your phone ."
             reference = data.get('reference', 'N/A')
+            
+            if not reference or reference == 'N/A':
+                logger.error(f"Missing reference in deposit init response: {data}")
+                raise ValueError("Failed to get transaction reference from server")
 
             # Store reference for OTP submission
             context.user_data['deposit_reference'] = reference
 
-            await update.message.reply_text(
-                f"✅ Deposit Initiated\n\n"
-                f"Detected Network: {network_display.get(network, network)}\n"
-                f"Amount: GHS {amount}\n"
-                f"Phone: {normalized_phone}\n\n"
-                f"{display_text}\n"
-                f"Please enter the OTP sent to your phone.\n\n"
-                f"Reference: {reference}"
-            )
-
+            # Try to send confirmation message, but don't fail if Telegram API times out
+            try:
+                await update.message.reply_text(
+                    f"✅ Deposit Initiated\n\n"
+                    f"Detected Network: {network_display.get(network, network)}\n"
+                    f"Amount: GHS {amount}\n"
+                    f"Phone: {normalized_phone}\n\n"
+                    f"{display_text}\n\n"
+                    f"OR\n"
+                    f"Go to my approvals on your mobile device to approve the payment.\n\n"
+                )
+            except Exception as telegram_error:
+                # Log the error but don't fail - the deposit was successful
+                logger.error(f"Failed to send Telegram message (deposit was successful): {telegram_error}")
             return OTP
             
     except httpx.HTTPStatusError as e:
@@ -199,25 +222,56 @@ async def deposit_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             error_msg = str(e)
         
-        await update.message.reply_text(
-            f"❌ Deposit Failed\n\n"
-            f"Error: {error_msg}\n\n"
-            "Please try again."
-        )
+        logger.error(f"Deposit init failed with HTTP error: {error_msg}")
+        
+        # Try to send error message, but handle Telegram API errors gracefully
+        try:
+            await update.message.reply_text(
+                f"❌ Deposit Failed\n\n"
+                "Please try again."
+            )
+        except Exception as telegram_error:
+            logger.error(f"Failed to send error message via Telegram: {telegram_error}")
+            # Try to send via edit if this was a callback query
+            try:
+                if update.callback_query:
+                    await update.callback_query.edit_message_text(
+                        f"❌ Deposit Failed\n\n"
+                        "Please try again."
+                    )
+            except Exception:
+                pass
+        
         context.user_data.clear()
         return ConversationHandler.END
     except Exception as e:
-        await update.message.reply_text(
-            f"❌ An error occurred: {str(e)}\n\n"
-            "Please try again later."
-        )
+        logger.error(f"Unexpected error in deposit_phone: {e}", exc_info=True)
+        
+        # Try to send error message, but handle Telegram API errors gracefully
+        try:
+            await update.message.reply_text(
+                f"❌ An error occurred: {str(e)}\n\n"
+                "Please try again later."
+            )
+        except Exception as telegram_error:
+            logger.error(f"Failed to send error message via Telegram: {telegram_error}")
+            # Try to send via edit if this was a callback query
+            try:
+                if update.callback_query:
+                    await update.callback_query.edit_message_text(
+                        f"❌ An error occurred\n\n"
+                        "Please try again later."
+                    )
+            except Exception:
+                pass  # Give up on sending error message
+        
         context.user_data.clear()
         return ConversationHandler.END
 
 
 async def deposit_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle OTP submission."""
-    import asyncio
+    """Handle OTP submission with immediate verification."""
+   
     
     otp = update.message.text.strip()
     reference = context.user_data.get('deposit_reference')
@@ -232,6 +286,8 @@ async def deposit_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Submit OTP to backend
     try:
         async with httpx.AsyncClient() as client:
+            logger.info(f"Submitting OTP for reference: {reference}")
+            
             response = await client.post(
                 f"{settings.BACKEND_API_URL}/api/v1/wallet/deposit/confirm",
                 json={
@@ -243,24 +299,32 @@ async def deposit_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
             response.raise_for_status()
             data = response.json()
             
+            logger.info(f"OTP submission response: {data}")
+            
             if data.get("status") == "success":
-                await update.message.reply_text(
-                    f"✅ {data.get('message', 'Deposit successful!')}"
-                )
+                # Payment successful immediately - notify user
+                try:
+                    await update.message.reply_text(
+                        f"✅ {data.get('message', 'Deposit successful! Your wallet has been credited.')}"
+                    )
+                except Exception as telegram_error:
+                    logger.error(f"Failed to send success message via Telegram: {telegram_error}")
+                
                 context.user_data.clear()
                 return ConversationHandler.END
             else:
-                # OTP submitted but payment pending - verify after a delay
-                await update.message.reply_text(
-                    f"⏳ {data.get('message', 'OTP submitted, verifying payment...')}\n\n"
-                    f"Please wait a moment while we verify your payment."
-                )
-                
-                # Wait a few seconds then verify the transaction
-                await asyncio.sleep(3)
-                
-                # Try to verify the transaction
+                # OTP submitted but payment pending - verify immediately
                 try:
+                    await update.message.reply_text(
+                        f"⏳ OTP submitted. Verifying payment status..."
+                    )
+                except Exception as telegram_error:
+                    logger.error(f"Failed to send verification status message via Telegram: {telegram_error}")                
+                await asyncio.sleep(2)
+                
+                # Try to verify the transaction immediately
+                try:
+                    logger.info(f"Verifying transaction: {reference}")
                     verify_response = await client.post(
                         f"{settings.BACKEND_API_URL}/api/v1/wallet/deposit/verify/{reference}",
                         timeout=30.0
@@ -268,31 +332,95 @@ async def deposit_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     verify_response.raise_for_status()
                     verify_data = verify_response.json()
                     
+                    logger.info(f"Verification response: {verify_data}")
+                    
                     if verify_data.get("status") == "success":
-                        await update.message.reply_text(
-                            f"✅ Deposit verified and wallet credited!\n\n"
-                            f"Your wallet has been updated with the deposit amount."
-                        )
+                        # Get balance info if available
+                        transaction = verify_data.get("transaction", {})
+                        wallet_info = ""
+                        if transaction:
+                            raw_payload = transaction.get("raw_payload", {})
+                            if isinstance(raw_payload, dict):
+                                new_balance = raw_payload.get("new_balance")
+                                if new_balance:
+                                    wallet_info = f"\n\n💰 New Balance: GHS {new_balance}"
+                        
+                        try:
+                            await update.message.reply_text(
+                                f"✅ Deposit verified and wallet credited!{wallet_info}\n\n"
+                                f"Your wallet has been updated with the deposit amount."
+                            )
+                        except Exception as telegram_error:
+                            logger.error(f"Failed to send verification success message via Telegram: {telegram_error}")
                     elif verify_data.get("status") == "pending":
+                        # Still pending - check again after a short delay
+                        await asyncio.sleep(3)
+                        
+                        # Second verification attempt
+                        try:
+                            verify_response2 = await client.post(
+                                f"{settings.BACKEND_API_URL}/api/v1/wallet/deposit/verify/{reference}",
+                                timeout=30.0
+                            )
+                            verify_response2.raise_for_status()
+                            verify_data2 = verify_response2.json()
+                            
+                            if verify_data2.get("status") == "success":
+                                transaction = verify_data2.get("transaction", {})
+                                wallet_info = ""
+                                if transaction:
+                                    raw_payload = transaction.get("raw_payload", {})
+                                    if isinstance(raw_payload, dict):
+                                        new_balance = raw_payload.get("new_balance")
+                                        if new_balance:
+                                            wallet_info = f"\n\n💰 New Balance: GHS {new_balance}"
+                                
+                                try:
+                                    await update.message.reply_text(
+                                        f"✅ Payment verified! Your wallet has been credited.{wallet_info}"
+                                    )
+                                except Exception as telegram_error:
+                                    logger.error(f"Failed to send second verification success message via Telegram: {telegram_error}")
+                            else:
+                                try:
+                                    await update.message.reply_text(
+                                        f"⏳ Payment is still being processed.\n\n"
+                                        f"If your payment was successful, your wallet will be credited shortly.\n"
+                                        f"You can check your balance using the 💼 Balance button."
+                                    )
+                                except Exception as telegram_error:
+                                    logger.error(f"Failed to send pending status message via Telegram: {telegram_error}")
+                        except Exception:
+                            # Second verification failed, but that's okay
+                            try:
+                                await update.message.reply_text(
+                                    f"⏳ Payment is being processed.\n\n"
+                                    f"If your payment was successful, your wallet will be credited shortly.\n"
+                                    f"You can check your balance using the 💼 Balance button."
+                                )
+                            except Exception as telegram_error:
+                                logger.error(f"Failed to send processing status message via Telegram: {telegram_error}")
+                    else:
+                        try:
+                            await update.message.reply_text(
+                                f"⚠️ Payment status: {verify_data.get('paystack_status', 'unknown')}\n\n"
+                                f"Please check your balance. If the payment was successful but balance wasn't updated, "
+                                f"please contact support."
+                            )
+                        except Exception as telegram_error:
+                            logger.error(f"Failed to send payment status message via Telegram: {telegram_error}")
+                except Exception as verify_error:
+                    logger.error(f"Verification error: {verify_error}", exc_info=True)
+                    # Verification failed, but OTP was submitted
+                    try:
                         await update.message.reply_text(
-                            f"⏳ Payment is still being processed.\n\n"
-                            f"If your payment was successful, your wallet will be credited automatically.\n"
+                            f"⏳ OTP submitted successfully.\n\n"
+                            f"Payment is being processed. If your payment was successful, "
+                            f"your wallet will be credited automatically via webhook.\n\n"
                             f"You can check your balance using the 💼 Balance button."
                         )
-                    else:
-                        await update.message.reply_text(
-                            f"⚠️ Payment status: {verify_data.get('paystack_status', 'unknown')}\n\n"
-                            f"Please check your balance. If the payment was successful but balance wasn't updated, "
-                            f"please contact support."
-                        )
-                except Exception as verify_error:
-                    # Verification failed, but OTP was submitted
-                    await update.message.reply_text(
-                        f"⏳ OTP submitted successfully.\n\n"
-                        f"Payment is being processed. If your payment was successful, "
-                        f"your wallet will be credited automatically.\n\n"
-                        f"You can check your balance using the 💼 Balance button."
-                    )
+                    except Exception as telegram_error:
+                        logger.error(f"Failed to send OTP submitted message via Telegram: {telegram_error}")
             
             context.user_data.clear()
             return ConversationHandler.END
@@ -305,18 +433,30 @@ async def deposit_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             error_msg = str(e)
         
-        await update.message.reply_text(
-            f"❌ OTP verification failed\n\n"
-            f"Error: {error_msg}\n\n"
-            "Please try the deposit again."
-        )
+        logger.error(f"OTP verification failed with HTTP error: {error_msg}")
+        
+        try:
+            await update.message.reply_text(
+                f"❌ OTP verification failed\n\n"
+                f"Error: {error_msg}\n\n"
+                "Please try the deposit again."
+            )
+        except Exception as telegram_error:
+            logger.error(f"Failed to send OTP error message via Telegram: {telegram_error}")
+        
         context.user_data.clear()
         return ConversationHandler.END
     except Exception as e:
-        await update.message.reply_text(
-            f"❌ An error occurred: {str(e)}\n\n"
-            "Please try again later."
-        )
+        logger.error(f"Unexpected error in deposit_otp: {e}", exc_info=True)
+        
+        try:
+            await update.message.reply_text(
+                f"❌ An error occurred: {str(e)}\n\n"
+                "Please try again later."
+            )
+        except Exception as telegram_error:
+            logger.error(f"Failed to send error message via Telegram: {telegram_error}")
+        
         context.user_data.clear()
         return ConversationHandler.END
 
@@ -326,8 +466,6 @@ async def deposit_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Clear conversation data
     context.user_data.clear()
     
-    # If this is called from a keyboard button fallback, don't show cancel message
-    # The button handler will process it
     message_text = update.message.text.strip() if update.message else ""
     keyboard_buttons = ["💼 Balance", "➕ Deposit", "🌐 Bundles", "📜 History", "🎯 Referral", "❓ Help"]
     

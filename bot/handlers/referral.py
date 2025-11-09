@@ -1,7 +1,7 @@
-from telegram import Update
-from telegram.ext import ContextTypes
 import httpx
+from telegram import Update
 from app.core.config import settings
+from telegram.ext import ContextTypes
 
 
 async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):

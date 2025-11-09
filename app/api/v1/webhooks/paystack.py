@@ -1,5 +1,6 @@
 """Paystack webhook handler using Supabase repositories."""
 import json
+import logging
 from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
 from app.repository.transaction_repo import TransactionRepository
 from app.repository.user_repo import UserRepository
@@ -49,7 +50,7 @@ async def paystack_webhook(
     transaction_repo = TransactionRepository()
     
     # Find transaction by Paystack reference
-    transaction = transaction_repo.get_by_paystack_reference(paystack_ref)
+    transaction = await transaction_repo.get_by_paystack_reference(paystack_ref)
     
     if not transaction:
         raise HTTPException(status_code=404, detail="Transaction not found")
@@ -61,7 +62,6 @@ async def paystack_webhook(
         if isinstance(raw_payload, dict) and raw_payload.get("wallet_credited"):
             return {"status": "ok", "message": "Already processed and wallet credited"}
         # If status is SUCCESS but no wallet_credited flag, log warning
-        import logging
         logging.warning(f"Transaction {transaction['reference']} has SUCCESS status but no wallet_credited flag")
         return {"status": "ok", "message": "Already processed"}
     
@@ -72,7 +72,7 @@ async def paystack_webhook(
     else:
         updated_payload = {"webhook_data": payload}
     
-    transaction_repo.update_transaction_status(
+    await transaction_repo.update_transaction_status(
         transaction["id"],
         transaction["status"],
         raw_payload=updated_payload
@@ -87,7 +87,7 @@ async def paystack_webhook(
             amount = Decimal(str(transaction["amount"]))
             
             # credit_wallet is now idempotent - it checks transaction status before crediting
-            await wallet_service.credit_wallet(
+            wallet = await wallet_service.credit_wallet(
                 user_id=transaction["user_id"],
                 amount=amount,
                 reference=transaction["reference"]
@@ -96,6 +96,7 @@ async def paystack_webhook(
             # Send admin notification in background
             background_tasks.add_task(
                 NotifierService.send_admin_alert,
+                f"<b>ADMIN ALERT: Wallet credited</b>\n"
                 f"✅ Deposit Success\n"
                 f"User: {transaction['user_id']}\n"
                 f"Amount: GHS {transaction['amount']}\n"
@@ -106,21 +107,22 @@ async def paystack_webhook(
             referral_service = ReferralService()
             await referral_service.award_referral_bonus(transaction["user_id"])
             
-            # Notify user
+            # Notify user with balance information
             user_repo = UserRepository()
-            user = user_repo.get_by_id(transaction["user_id"])
-            if user:
+            user = await user_repo.get_by_id(transaction["user_id"])
+            if user and wallet:
+                balance = wallet.get("balance", "0.00")
                 await NotifierService.send_user_message(
                     telegram_id=int(user["telegram_id"]),
                     text=f"✅ <b>Deposit Successful!</b>\n\n"
                          f"Amount: GHS {transaction['amount']}\n"
-                         f"Your wallet has been credited.\n"
-                         f"New balance available for purchases."
+                         f"Your wallet has been credited.\n\n"
+                         f"💰 New Balance: GHS {balance}"
                 )
             
             return {"status": "ok", "message": "Wallet credited"}
         except Exception as e:
-            transaction_repo.update_transaction_status(
+            await transaction_repo.update_transaction_status(
                 transaction["id"],
                 TransactionStatus.FAILED.value,
                 raw_payload={**updated_payload, "error": str(e)}
@@ -129,7 +131,7 @@ async def paystack_webhook(
     
     elif event == "charge.failed":
         # Mark transaction as failed
-        transaction_repo.update_transaction_status(
+        await transaction_repo.update_transaction_status(
             transaction["id"],
             TransactionStatus.FAILED.value,
             raw_payload=updated_payload
