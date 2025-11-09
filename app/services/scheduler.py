@@ -1,6 +1,6 @@
+"""Scheduler service using Supabase repositories."""
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from app.db.session import AsyncSessionLocal
 from app.services.bundle_sync import BundleSyncService
 import logging
 
@@ -13,13 +13,12 @@ async def sync_bundles_job():
     """Background job to sync bundles from DatamartGH."""
     logger.info("Starting scheduled bundle sync...")
     
-    async with AsyncSessionLocal() as db:
-        sync_service = BundleSyncService()
-        try:
-            count = await sync_service.sync_bundles_to_db(db)
-            logger.info(f"✅ Scheduled sync completed: {count} bundles synced")
-        except Exception as e:
-            logger.error(f"❌ Scheduled sync failed: {str(e)}")
+    sync_service = BundleSyncService()
+    try:
+        count = await sync_service.sync_bundles_to_db()
+        logger.info(f"✅ Scheduled sync completed: {count} bundles synced")
+    except Exception as e:
+        logger.error(f"❌ Scheduled sync failed: {str(e)}")
 
 
 def start_scheduler():

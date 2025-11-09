@@ -1,7 +1,6 @@
-from app.db.session import get_db
-from sqlalchemy.ext.asyncio import AsyncSession
+"""Admin task API endpoints using Supabase repositories."""
+from fastapi import APIRouter, BackgroundTasks
 from app.services.bundle_sync import BundleSyncService
-from fastapi import APIRouter, Depends, BackgroundTasks
 
 router = APIRouter()
 
@@ -9,7 +8,6 @@ router = APIRouter()
 @router.post("/sync-bundles")
 async def sync_bundles(
     background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db),
     networks: list[str] = None
 ):
     """
@@ -24,7 +22,6 @@ async def sync_bundles(
     # Run sync in background
     background_tasks.add_task(
         sync_service.sync_bundles_to_db,
-        db,
         networks
     )
     
@@ -73,4 +70,3 @@ async def check_paystack_health():
             "status": "unhealthy",
             "message": f"Paystack service error: {str(e)}"
         }
-

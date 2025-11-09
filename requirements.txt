@@ -2,13 +2,15 @@ fastapi
 uvicorn[standard]
 httpx
 python-dotenv
-sqlalchemy>=1.4
-alembic
-asyncpg
-python-telegram-bot==20.6
+python-telegram-bot
 pydantic
 pydantic-settings
 pytest
 pytest-asyncio
-aiosqlite
 apscheduler
+supabase
+
+# SQLAlchemy (required for model imports - models are kept for reference and enum definitions)
+# Note: Models are not used for database operations (we use Supabase REST API),
+# but they contain enum definitions that are used throughout the application
+sqlalchemy>=1.4

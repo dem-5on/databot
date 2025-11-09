@@ -1,10 +1,11 @@
-from pydantic_settings import BaseSettings
 from typing import List
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    # Database
-    DATABASE_URL: str
+    # Supabase - Required for database operations via REST API
+    SUPABASE_URL: str
+    SUPABASE_KEY: str
 
     # Paystack
     PAYSTACK_SECRET_KEY: str

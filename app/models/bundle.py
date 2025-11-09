@@ -1,8 +1,7 @@
-from sqlalchemy import Column, String, Numeric, Boolean
-from sqlalchemy.dialects.postgresql import UUID
 import uuid
-
 from app.db.base import Base
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, String, Numeric, Boolean
 
 
 class Bundle(Base):

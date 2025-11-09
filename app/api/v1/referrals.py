@@ -1,29 +1,24 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-
-from app.db.session import get_db
-from app.models.user import User
+"""Referral API endpoints using Supabase repositories."""
+from fastapi import APIRouter, HTTPException
+from app.repository.user_repo import UserRepository
 from app.services.referral_service import ReferralService
 
 router = APIRouter()
 
 
 @router.get("/code/{telegram_id}")
-async def get_referral_code(
-    telegram_id: str,
-    db: AsyncSession = Depends(get_db)
-):
+async def get_referral_code(telegram_id: str):
     """Get user's referral code."""
-    stmt = select(User).where(User.telegram_id == telegram_id)
-    result = await db.execute(stmt)
-    user = result.scalar_one_or_none()
+    user_repo = UserRepository()
+    referral_service = ReferralService()
+    
+    user = user_repo.get_by_telegram_id(telegram_id)
     
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
     # Get or create referral code
-    referral_code = await ReferralService.get_or_create_referral_code(db, user.id)
+    referral_code = await referral_service.get_or_create_referral_code(user["id"])
     
     return {
         "telegram_id": telegram_id,
@@ -33,23 +28,20 @@ async def get_referral_code(
 
 
 @router.get("/referrals/{telegram_id}")
-async def get_referrals(
-    telegram_id: str,
-    db: AsyncSession = Depends(get_db)
-):
+async def get_referrals(telegram_id: str):
     """Get list of users referred by this user."""
-    stmt = select(User).where(User.telegram_id == telegram_id)
-    result = await db.execute(stmt)
-    user = result.scalar_one_or_none()
+    user_repo = UserRepository()
+    referral_service = ReferralService()
+    
+    user = user_repo.get_by_telegram_id(telegram_id)
     
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    referrals = await ReferralService.get_user_referrals(db, user.id)
+    referrals = await referral_service.get_user_referrals(user["id"])
     
     return {
         "telegram_id": telegram_id,
         "total_referrals": len(referrals),
         "referrals": referrals
     }
-

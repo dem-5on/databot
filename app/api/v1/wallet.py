@@ -1,15 +1,13 @@
 import uuid
 from decimal import Decimal
-from sqlalchemy import select
-from app.models.user import User
-from app.db.session import get_db
-from pydantic import BaseModel, EmailStr
-from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, Request
+from app.repository.user_repo import UserRepository
+from app.repository.transaction_repo import TransactionRepository
 from app.services.notifier import NotifierService
 from app.services.wallet_service import WalletService
 from app.services.paystack_service import PaystackService
-from fastapi import APIRouter, Depends, HTTPException, Request
-from app.models.transaction import Transaction, TransactionType, TransactionStatus
+from app.core.constants import TransactionType, TransactionStatus
 
 router = APIRouter()
 
@@ -21,45 +19,36 @@ class DepositInitRequest(BaseModel):
     provider: str  # MTN, VODAFONE, AIRTELTIGO
 
 
-
 class DepositConfirmRequest(BaseModel):
     reference: str  # The DEP-xxx reference
     otp: str
 
 
 @router.post("/deposit/init")
-async def init_deposit(
-    request: DepositInitRequest,
-    db: AsyncSession = Depends(get_db)
-):
+async def init_deposit(request: DepositInitRequest):
     """
     Initialize a deposit transaction and create Paystack charge.
     """
-    # Get or create user
-    stmt = select(User).where(User.telegram_id == request.telegram_id)
-    result = await db.execute(stmt)
-    user = result.scalar_one_or_none()
+    user_repo = UserRepository()
+    transaction_repo = TransactionRepository()
     
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    # Get or create user
+    user, _ = user_repo.get_or_create(request.telegram_id)
     
     # Generate unique reference
     reference = f"DEP-{uuid.uuid4()}"
     
     # Create transaction record
-    transaction = Transaction(
-        user_id=user.id,
-        type=TransactionType.DEPOSIT,
+    transaction = transaction_repo.create_transaction(
+        user_id=user["id"],
+        transaction_type=TransactionType.DEPOSIT.value,
         amount=request.amount,
         currency="GHS",
         reference=reference,
-        status=TransactionStatus.PENDING,
+        status=TransactionStatus.PENDING.value,
         phone=request.phone,
         provider=request.provider
     )
-    db.add(transaction)
-    await db.commit()
-    await db.refresh(transaction)
     
     # Create Paystack charge
     paystack_service = PaystackService()
@@ -75,8 +64,11 @@ async def init_deposit(
         )
         
         # Store Paystack response in transaction
-        transaction.raw_payload = paystack_response
-        await db.commit()
+        transaction_repo.update_transaction_status(
+            transaction["id"],
+            TransactionStatus.PENDING.value,
+            raw_payload=paystack_response
+        )
         
         return {
             "status": "success",
@@ -85,26 +77,26 @@ async def init_deposit(
             "display_text": paystack_response.get("data", {}).get("display_text", "You'll receive a MoMo prompt; approve it to complete.")
         }
     except Exception as e:
-        transaction.status = TransactionStatus.FAILED
-        transaction.raw_payload = {"error": str(e)}
-        await db.commit()
+        transaction_repo.update_transaction_status(
+            transaction["id"],
+            TransactionStatus.FAILED.value,
+            raw_payload={"error": str(e)}
+        )
         raise HTTPException(status_code=500, detail=f"Failed to initiate charge: {str(e)}")
 
 
 @router.get("/balance/{telegram_id}")
-async def get_balance(
-    telegram_id: str,
-    db: AsyncSession = Depends(get_db)
-):
+async def get_balance(telegram_id: str):
     """Get wallet balance for user."""
-    stmt = select(User).where(User.telegram_id == telegram_id)
-    result = await db.execute(stmt)
-    user = result.scalar_one_or_none()
+    user_repo = UserRepository()
+    wallet_service = WalletService()
+    
+    user = user_repo.get_by_telegram_id(telegram_id)
     
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    balance = await WalletService.get_balance(db, user.id)
+    balance = await wallet_service.get_balance(user["id"])
     
     return {
         "telegram_id": telegram_id,
@@ -114,32 +106,31 @@ async def get_balance(
 
 
 @router.post("/deposit/confirm")
-async def confirm_deposit(
-    request: DepositConfirmRequest,
-    db: AsyncSession = Depends(get_db)
-):
+async def confirm_deposit(request: DepositConfirmRequest):
     """
     Submit OTP to confirm mobile money deposit.
     """
+    transaction_repo = TransactionRepository()
+    wallet_service = WalletService()
+    
     # Get transaction
-    stmt = select(Transaction).where(Transaction.reference == request.reference)
-    result = await db.execute(stmt)
-    transaction = result.scalar_one_or_none()
+    transaction = transaction_repo.get_by_reference(request.reference)
     
     if not transaction:
         raise HTTPException(status_code=404, detail="Transaction not found")
     
-    if transaction.status == TransactionStatus.SUCCESS:
+    if transaction["status"] == TransactionStatus.SUCCESS.value:
         raise HTTPException(status_code=400, detail="Transaction already completed")
     
-    if transaction.status == TransactionStatus.FAILED:
+    if transaction["status"] == TransactionStatus.FAILED.value:
         raise HTTPException(status_code=400, detail="Transaction already failed")
     
     # Submit OTP to Paystack
     paystack_service = PaystackService()
     try:
         # Get the Paystack reference from stored payload
-        paystack_ref = transaction.raw_payload.get("data", {}).get("reference")
+        raw_payload = transaction.get("raw_payload") or {}
+        paystack_ref = raw_payload.get("data", {}).get("reference")
         
         if not paystack_ref:
             raise ValueError("No Paystack reference found in transaction")
@@ -151,33 +142,43 @@ async def confirm_deposit(
         )
         
         # Update transaction with OTP submission response
-        if not transaction.raw_payload:
-            transaction.raw_payload = {}
-        transaction.raw_payload["otp_submission"] = submit_response
+        updated_payload = raw_payload.copy()
+        updated_payload["otp_submission"] = submit_response
+        transaction_repo.update_transaction_status(
+            transaction["id"],
+            transaction["status"],
+            raw_payload=updated_payload
+        )
         
         # Check if payment was successful
         response_status = submit_response.get("data", {}).get("status")
         
         if response_status == "success":
-            # Payment successful - update transaction and credit wallet
-            transaction.status = TransactionStatus.SUCCESS
-            await db.commit()
-            
-            # Credit wallet
-            await WalletService.credit_wallet(
-                db=db,
-                user_id=transaction.user_id,
-                amount=transaction.amount,
-                reference=transaction.reference
-            )
-            
-            return {
-                "status": "success",
-                "message": f"Deposit of GHS {transaction.amount} successful! Your wallet has been credited."
-            }
+            # Payment successful - credit wallet (idempotent operation)
+            # credit_wallet will check transaction status and prevent double crediting
+            try:
+                await wallet_service.credit_wallet(
+                    user_id=transaction["user_id"],
+                    amount=Decimal(transaction["amount"]),
+                    reference=transaction["reference"]
+                )
+                
+                return {
+                    "status": "success",
+                    "message": f"Deposit of GHS {transaction['amount']} successful! Your wallet has been credited."
+                }
+            except ValueError as e:
+                # Transaction already processed (idempotency check)
+                error_str = str(e).lower()
+                if "already processed" in error_str or "already credited" in error_str:
+                    return {
+                        "status": "success",
+                        "message": f"Deposit of GHS {transaction['amount']} successful! Your wallet has been credited."
+                    }
+                else:
+                    raise
         else:
             # Payment not yet confirmed or failed
-            await db.commit()
             return {
                 "status": "pending",
                 "message": "Payment is being processed. Please wait a moment.",
@@ -185,95 +186,142 @@ async def confirm_deposit(
             }
             
     except Exception as e:
-        transaction.status = TransactionStatus.FAILED
-        if not transaction.raw_payload:
-            transaction.raw_payload = {}
-        transaction.raw_payload["otp_error"] = str(e)
-        await db.commit()
+        transaction_repo.update_transaction_status(
+            transaction["id"],
+            TransactionStatus.FAILED.value,
+            raw_payload={"otp_error": str(e)}
+        )
         raise HTTPException(status_code=400, detail=f"Failed to confirm deposit: {str(e)}")
-    
 
 
-
-@router.post("/paystack/webhook")
-async def paystack_webhook(
-    request: Request,
-    db: AsyncSession = Depends(get_db)
-):
+@router.post("/deposit/verify/{reference}")
+async def verify_deposit(reference: str):
     """
-    Handle Paystack webhook notifications for payment status updates.
+    Manually verify a deposit transaction by checking Paystack status.
+    This is useful if the webhook didn't fire or was missed.
     """
-    # Get raw body for signature verification
-    body = await request.body()
-    signature = request.headers.get("x-paystack-signature", "")
-    
-    # Verify webhook signature
+    transaction_repo = TransactionRepository()
+    wallet_service = WalletService()
     paystack_service = PaystackService()
-    if not paystack_service.verify_webhook_signature(body, signature):
-        raise HTTPException(status_code=401, detail="Invalid signature")
     
-    # Parse webhook data
+    # Get transaction
+    transaction = transaction_repo.get_by_reference(reference)
+    
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    
+    # Check if already processed
+    if transaction["status"] == TransactionStatus.SUCCESS.value:
+        return {
+            "status": "success",
+            "message": "Transaction already completed",
+            "transaction": transaction
+        }
+    
+    # Get Paystack reference
+    raw_payload = transaction.get("raw_payload") or {}
+    paystack_ref = raw_payload.get("data", {}).get("reference")
+    
+    if not paystack_ref:
+        raise HTTPException(status_code=400, detail="No Paystack reference found in transaction")
+    
     try:
-        data = await request.json()
-    except:
-        raise HTTPException(status_code=400, detail="Invalid JSON")
-    
-    event = data.get("event")
-    event_data = data.get("data", {})
-    
-    # Handle charge.success event
-    if event == "charge.success":
-        # Get Paystack reference
-        paystack_ref = event_data.get("reference")
+        # Verify transaction with Paystack
+        verify_response = await paystack_service.verify_transaction(paystack_ref)
         
-        if not paystack_ref:
-            return {"status": "ignored", "reason": "no reference"}
-        
-        # Find transaction by Paystack reference in raw_payload
-        stmt = select(Transaction).where(
-            Transaction.raw_payload.op("->")("data").op("->>")("reference") == paystack_ref
-        )
-        result = await db.execute(stmt)
-        transaction = result.scalar_one_or_none()
-        
-        if not transaction:
-            return {"status": "ignored", "reason": "transaction not found"}
-        
-        if transaction.status == TransactionStatus.SUCCESS:
-            return {"status": "ignored", "reason": "already processed"}
-        
-        # Update transaction status
-        transaction.status = TransactionStatus.SUCCESS
-        transaction.raw_payload["webhook_data"] = event_data
-        await db.commit()
-        
-        # Credit wallet
-        await WalletService.credit_wallet(
-            db=db,
-            user_id=transaction.user_id,
-            amount=transaction.amount,
-            reference=transaction.reference
+        # Update transaction with verification response
+        updated_payload = raw_payload.copy()
+        updated_payload["verification"] = verify_response
+        transaction_repo.update_transaction_status(
+            transaction["id"],
+            transaction["status"],
+            raw_payload=updated_payload
         )
         
-        # Award referral bonus if this is user's first successful transaction
-        from app.services.referral_service import ReferralService
-        await ReferralService.award_referral_bonus(db, transaction.user_id)
+        # Check transaction status
+        transaction_data = verify_response.get("data", {})
+        paystack_status = transaction_data.get("status")
         
-        # Notify user
-        from app.models.user import User
-        user_stmt = select(User).where(User.id == transaction.user_id)
-        user_result = await db.execute(user_stmt)
-        user = user_result.scalar_one_or_none()
-        
-        if user:
-            await NotifierService.send_user_message(
-                telegram_id=int(user.telegram_id),
-                text=f"✅ <b>Deposit Successful!</b>\n\n"
-                     f"Amount: GHS {transaction.amount}\n"
-                     f"Your wallet has been credited.\n"
-                     f"New balance available for purchases."
+        if paystack_status == "success":
+            
+            try:
+                # This will only credit if transaction is not already SUCCESS
+                wallet = await wallet_service.credit_wallet(
+                    user_id=transaction["user_id"],
+                    amount=Decimal(transaction["amount"]),
+                    reference=transaction["reference"]
+                )
+                
+                # Re-fetch transaction to check if it was actually credited
+                # (it might have been credited by webhook in the meantime)
+                updated_transaction = transaction_repo.get_by_reference(reference)
+                was_just_credited = (
+                    updated_transaction and 
+                    updated_transaction["status"] == TransactionStatus.SUCCESS.value and
+                    updated_transaction.get("raw_payload", {}).get("wallet_credited")
+                )
+                
+                # Only award referral bonus and notify if we just credited
+                # (to avoid duplicate notifications if webhook already processed it)
+                if was_just_credited:
+                    # Award referral bonus
+                    from app.services.referral_service import ReferralService
+                    referral_service = ReferralService()
+                    await referral_service.award_referral_bonus(transaction["user_id"])
+                    
+                    # Notify user (only if we just credited, not if webhook already did)
+                    user_repo = UserRepository()
+                    user = user_repo.get_by_id(transaction["user_id"])
+                    if user:
+                        await NotifierService.send_user_message(
+                            telegram_id=int(user["telegram_id"]),
+                            text=f"✅ <b>Deposit Successful!</b>\n\n"
+                                 f"Amount: GHS {transaction['amount']}\n"
+                                 f"Your wallet has been credited.\n"
+                                 f"New balance available {wallet['balance']} for purchases."
+                        )
+                else:
+                    # Wallet was already credited by another process (likely webhook)
+                    import logging
+                    logging.info(f"Transaction {reference} was already credited by another process")
+            
+            except ValueError as e:
+                # Transaction already processed (idempotency check)
+                if "already processed" in str(e).lower() or "already credited" in str(e).lower():
+                    return {
+                        "status": "success",
+                        "message": "Transaction already processed and wallet credited",
+                        "paystack_status": paystack_status,
+                        "transaction": transaction_repo.get_by_reference(reference)
+                    }
+                else:
+                    raise
+            
+            return {
+                "status": "success",
+                "message": "Transaction verified and wallet credited",
+                "paystack_status": paystack_status,
+                "transaction": transaction_repo.get_by_reference(reference)
+            }
+        elif paystack_status == "failed":
+            # Payment failed
+            transaction_repo.update_transaction_status(
+                transaction["id"],
+                TransactionStatus.FAILED.value,
+                raw_payload=updated_payload
             )
-        
-        return {"status": "success"}
-    
-    return {"status": "ignored", "event": event}
+            return {
+                "status": "failed",
+                "message": "Transaction failed",
+                "paystack_status": paystack_status
+            }
+        else:
+            # Still pending
+            return {
+                "status": "pending",
+                "message": "Transaction is still pending",
+                "paystack_status": paystack_status
+            }
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to verify transaction: {str(e)}")

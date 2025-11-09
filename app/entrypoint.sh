@@ -1,30 +1,21 @@
 #!/bin/bash
-set -e  # Exit on error
+set -e
 
 echo "Starting entrypoint script..."
 
-# Wait for postgres to be ready
-echo "Waiting for PostgreSQL to be ready..."
-until nc -z postgres 5432; do
-  echo "PostgreSQL is unavailable - sleeping"
-  sleep 2
-done
+# Test Supabase connection
+echo "Testing Supabase connection..."
+python << EOF
+from app.db.supabase_client import supabase
 
-echo "PostgreSQL is up - checking if it's accepting connections..."
-sleep 2
-
-# Run migrations
-echo "Running database migrations..."
-alembic upgrade head || {
-  echo "Migration failed! Retrying in 5 seconds..."
-  sleep 5
-  alembic upgrade head || {
-    echo "Migration failed again. Exiting."
-    exit 1
-  }
-}
-
-echo "Migrations completed successfully!"
+try:
+    # Test connection by fetching user count
+    response = supabase.table('users').select("count").execute()
+    print("✅ Supabase connection successful!")
+except Exception as e:
+    print(f"❌ Supabase connection failed: {e}")
+    exit(1)
+EOF
 
 # Start the application
 echo "Starting FastAPI application..."

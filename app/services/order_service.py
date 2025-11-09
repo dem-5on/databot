@@ -1,33 +1,34 @@
-from sqlalchemy import select
-from app.models.bundle import Bundle
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.dialects.postgresql import UUID
-from app.models.order import Order, OrderStatus
+"""Order service using Supabase repositories."""
+from decimal import Decimal
+from app.repository.bundle_repo import BundleRepository
+from app.repository.order_repo import OrderRepository
+from app.repository.transaction_repo import TransactionRepository
 from app.services.notifier import NotifierService
 from app.services.wallet_service import WalletService
 from app.services.datamart_client import DatamartClient
-from app.models.transaction import Transaction, TransactionType, TransactionStatus
-from uuid import UUID as UUIDType
+from app.core.constants import TransactionType, TransactionStatus, OrderStatus
 
 
 class OrderService:
-    """Service for order operations."""
+    """Service for order operations using Supabase."""
 
     def __init__(self):
         self.datamart_client = DatamartClient()
+        self.bundle_repo = BundleRepository()
+        self.order_repo = OrderRepository()
+        self.transaction_repo = TransactionRepository()
+        self.wallet_service = WalletService()
 
     async def create_order(
         self,
-        db: AsyncSession,
-        user_id: UUIDType,
-        bundle_id: UUIDType,
+        user_id: str,
+        bundle_id: str,
         phone: str
-    ) -> Order:
+    ) -> dict:
         """
         Create an order and process bundle purchase.
         
         Args:
-            db: Database session
             user_id: User ID
             bundle_id: Bundle ID
             phone: Target phone number for bundle
@@ -38,126 +39,103 @@ class OrderService:
         Raises:
             ValueError: If bundle not found, insufficient balance, or vendor failure
         """
-        # Get bundle - convert bundle_id to string since Bundle.id is stored as string
-        bundle_id_str = str(bundle_id)
-        bundle_stmt = select(Bundle).where(Bundle.id == bundle_id_str, Bundle.active == True)
-        bundle_result = await db.execute(bundle_stmt)
-        bundle = bundle_result.scalar_one_or_none()
+        # Get bundle
+        bundle = self.bundle_repo.get_by_id(bundle_id)
+        if not bundle or not bundle.get("active"):
+            raise ValueError(f"Bundle not found or inactive. Bundle ID: {bundle_id}")
         
-        if not bundle:
-            raise ValueError(f"Bundle not found or inactive. Bundle ID: {bundle_id_str}")
+        bundle_price = Decimal(bundle["price"])
         
         # Check wallet balance
-        wallet_balance = await WalletService.get_balance(db, user_id)
-        if wallet_balance < bundle.price:
-            raise ValueError(f"Insufficient balance. Available: {wallet_balance}, Required: {bundle.price}")
+        wallet_balance = await self.wallet_service.get_balance(user_id)
+        if wallet_balance < bundle_price:
+            raise ValueError(f"Insufficient balance. Available: {wallet_balance}, Required: {bundle_price}")
         
         # Create order
-        # Convert bundle_id to UUID for Order model (which uses as_uuid=True)
-        # Bundle.id is stored as string, but Order.bundle_id expects UUID
-        try:
-            if isinstance(bundle_id, str):
-                bundle_uuid = UUIDType(bundle_id)
-            else:
-                bundle_uuid = bundle_id
-        except (ValueError, TypeError):
-            bundle_uuid = UUIDType(bundle_id_str)
-        
-        # Also convert user_id if it's a string
-        try:
-            if isinstance(user_id, str):
-                user_uuid = UUIDType(user_id)
-            else:
-                user_uuid = user_id
-        except (ValueError, TypeError):
-            user_uuid = user_id
-        
-        order = Order(
-            user_id=user_uuid,
-            bundle_id=bundle_uuid,
+        order = self.order_repo.create_order(
+            user_id=user_id,
+            bundle_id=bundle_id,
             phone=phone,
-            price=bundle.price,
-            status=OrderStatus.PROCESSING
+            price=bundle_price,
+            status=OrderStatus.PROCESSING.value
         )
-        db.add(order)
-        await db.flush()  # Get order ID
         
         # Create transaction record
-        transaction = Transaction(
-            user_id= str(user_id),
-            type=TransactionType.PURCHASE,
-            amount=bundle.price,
+        transaction = self.transaction_repo.create_transaction(
+            user_id=user_id,
+            transaction_type=TransactionType.PURCHASE.value,
+            amount=bundle_price,
             currency="GHS",
-            reference=f"ORDER-{order.id}",
-            status=TransactionStatus.PROCESSING,
+            reference=f"ORDER-{order['id']}",
+            status=TransactionStatus.PROCESSING.value,
             phone=phone,
-            provider=bundle.network
+            provider=bundle["network"]
         )
-        db.add(transaction)
-        await db.flush()
         
         try:
-            # Debit wallet (atomic operation)
-            wallet = await WalletService.debit_wallet(db, user_id, bundle.price)
+            # Debit wallet
+            await self.wallet_service.debit_wallet(user_id, bundle_price)
             
             # Purchase bundle from DatamartGH
             try:
-                # Map network to DatamartGH format
-                network_map = {
-                    "MTN": "YELLO",
-                    "VODAFONE": "TELECEL",
-                    "AIRTELTIGO": "AT_PREMIUM"
-                }
-                datamart_network = network_map.get(bundle.network, "YELLO")
-                
                 vendor_response = await self.datamart_client.purchase_bundle(
                     phone_number=phone,
-                    network=bundle.network,  # Client will map it
-                    capacity=bundle.capacity,
-                    ref=str(order.id)
+                    network=bundle["network"],
+                    capacity=bundle["capacity"],
+                    ref=order["id"]
                 )
                 
                 # Success - update order and transaction
                 vendor_ref = vendor_response.get("transactionReference", "")
-                order.status = OrderStatus.SUCCESS
-                order.vendor_reference = vendor_ref
-                order.vendor_response = vendor_response
+                self.order_repo.update_order_status(
+                    order["id"],
+                    OrderStatus.SUCCESS.value,
+                    vendor_reference=vendor_ref,
+                    vendor_response=vendor_response
+                )
                 
-                transaction.status = TransactionStatus.SUCCESS
-                transaction.raw_payload = vendor_response
+                self.transaction_repo.update_transaction_status(
+                    transaction["id"],
+                    TransactionStatus.SUCCESS.value,
+                    raw_payload=vendor_response
+                )
                 
-                await db.commit()
+                # Get updated order
+                order = self.order_repo.get_by_id(order["id"])
                 
                 # Award referral bonus if this is user's first successful transaction
                 from app.services.referral_service import ReferralService
-                await ReferralService.award_referral_bonus(db, user_id)
+                await ReferralService.award_referral_bonus(user_id)
                 
                 return order
                 
             except Exception as vendor_error:
                 # Vendor failure - refund wallet
-                await WalletService.refund_wallet(
-                    db=db,
-                    user_id=user_uuid,
-                    amount=bundle.price,
-                    transaction_id=transaction.id
+                await self.wallet_service.refund_wallet(
+                    user_id=user_id,
+                    amount=bundle_price,
+                    transaction_id=transaction["id"]
                 )
                 
                 # Update order and transaction status
-                order.status = OrderStatus.FAILED
-                order.vendor_response = {"error": str(vendor_error)}
+                self.order_repo.update_order_status(
+                    order["id"],
+                    OrderStatus.FAILED.value,
+                    vendor_response={"error": str(vendor_error)}
+                )
                 
-                transaction.status = TransactionStatus.FAILED
-                transaction.raw_payload = {"error": str(vendor_error)}
-                
-                await db.commit()
+                self.transaction_repo.update_transaction_status(
+                    transaction["id"],
+                    TransactionStatus.FAILED.value,
+                    raw_payload={"error": str(vendor_error)}
+                )
                 
                 # Notify admin
                 await NotifierService.send_admin_alert(
                     f"❌ Order Failure\n"
                     f"User: {user_id}\n"
-                    f"Order ID: {order.id}\n"
-                    f"Bundle: {bundle.network} {bundle.capacity}GB\n"
+                    f"Order ID: {order['id']}\n"
+                    f"Bundle: {bundle['network']} {bundle['capacity']}GB\n"
                     f"Error: {str(vendor_error)}"
                 )
                 
@@ -165,10 +143,7 @@ class OrderService:
                 
         except ValueError as e:
             # Re-raise balance errors
-            await db.rollback()
             raise
         except Exception as e:
             # Other errors
-            await db.rollback()
             raise ValueError(f"Order creation failed: {str(e)}")
-

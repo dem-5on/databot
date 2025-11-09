@@ -217,6 +217,8 @@ async def deposit_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def deposit_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle OTP submission."""
+    import asyncio
+    
     otp = update.message.text.strip()
     reference = context.user_data.get('deposit_reference')
     
@@ -245,10 +247,52 @@ async def deposit_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(
                     f"✅ {data.get('message', 'Deposit successful!')}"
                 )
+                context.user_data.clear()
+                return ConversationHandler.END
             else:
+                # OTP submitted but payment pending - verify after a delay
                 await update.message.reply_text(
-                    f"⏳ {data.get('message', 'OTP submitted, waiting for confirmation')}"
+                    f"⏳ {data.get('message', 'OTP submitted, verifying payment...')}\n\n"
+                    f"Please wait a moment while we verify your payment."
                 )
+                
+                # Wait a few seconds then verify the transaction
+                await asyncio.sleep(3)
+                
+                # Try to verify the transaction
+                try:
+                    verify_response = await client.post(
+                        f"{settings.BACKEND_API_URL}/api/v1/wallet/deposit/verify/{reference}",
+                        timeout=30.0
+                    )
+                    verify_response.raise_for_status()
+                    verify_data = verify_response.json()
+                    
+                    if verify_data.get("status") == "success":
+                        await update.message.reply_text(
+                            f"✅ Deposit verified and wallet credited!\n\n"
+                            f"Your wallet has been updated with the deposit amount."
+                        )
+                    elif verify_data.get("status") == "pending":
+                        await update.message.reply_text(
+                            f"⏳ Payment is still being processed.\n\n"
+                            f"If your payment was successful, your wallet will be credited automatically.\n"
+                            f"You can check your balance using the 💼 Balance button."
+                        )
+                    else:
+                        await update.message.reply_text(
+                            f"⚠️ Payment status: {verify_data.get('paystack_status', 'unknown')}\n\n"
+                            f"Please check your balance. If the payment was successful but balance wasn't updated, "
+                            f"please contact support."
+                        )
+                except Exception as verify_error:
+                    # Verification failed, but OTP was submitted
+                    await update.message.reply_text(
+                        f"⏳ OTP submitted successfully.\n\n"
+                        f"Payment is being processed. If your payment was successful, "
+                        f"your wallet will be credited automatically.\n\n"
+                        f"You can check your balance using the 💼 Balance button."
+                    )
             
             context.user_data.clear()
             return ConversationHandler.END

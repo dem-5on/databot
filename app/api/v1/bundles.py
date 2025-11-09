@@ -1,46 +1,33 @@
+"""Bundle API endpoints using Supabase repositories."""
 from typing import Optional
-from sqlalchemy import select
-from app.db.session import get_db
-from app.models.bundle import Bundle
-from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.services.bundle_sync import BundleSyncService
+from fastapi import APIRouter
+from app.repository.bundle_repo import BundleRepository
 
 router = APIRouter()
 
 
 @router.get("")
-async def get_bundles(
-    network: Optional[str] = None,
-    db: AsyncSession = Depends(get_db)
-):
+async def get_bundles(network: Optional[str] = None):
     """
     Get available bundles, optionally filtered by network.
     """
-    if network:
-        stmt = select(Bundle).where(
-            Bundle.network == network.upper(),
-            Bundle.active == True
-        ).order_by(Bundle.price)
-    else:
-        stmt = select(Bundle).where(
-            Bundle.active == True
-        ).order_by(Bundle.price)
+    bundle_repo = BundleRepository()
     
-    result = await db.execute(stmt)
-    bundles = result.scalars().all()
+    if network:
+        bundles = bundle_repo.get_by_network(network.upper(), active_only=True)
+    else:
+        bundles = bundle_repo.get_active_bundles()
     
     return {
         "bundles": [
             {
-                "id": str(b.id),
-                "network": b.network,
-                "capacity": b.capacity,
-                "mb": b.mb,
-                "price": str(b.price),
-                "currency": b.currency
+                "id": b["id"],
+                "network": b["network"],
+                "capacity": b["capacity"],
+                "mb": b["mb"],
+                "price": b["price"],
+                "currency": b.get("currency", "GHS")
             }
             for b in bundles
         ]
     }
-

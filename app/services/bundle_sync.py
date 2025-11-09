@@ -1,25 +1,24 @@
+"""Bundle sync service using Supabase repositories."""
 from decimal import Decimal
-from sqlalchemy import select
-from app.models.bundle import Bundle
-from sqlalchemy.ext.asyncio import AsyncSession
+from app.repository.bundle_repo import BundleRepository
 from app.services.datamart_client import DatamartClient
 
 
 class BundleSyncService:
-    """Service for syncing bundles from DatamartGH to database."""
+    """Service for syncing bundles from DatamartGH to database using Supabase."""
 
     # Markup to add to all bundle prices (50 pesewas = GHS 0.50)
     PRICE_MARKUP = Decimal("0.50")
 
     def __init__(self):
         self.datamart_client = DatamartClient()
+        self.bundle_repo = BundleRepository()
 
-    async def sync_bundles_to_db(self, db: AsyncSession, networks: list = None) -> int:
+    async def sync_bundles_to_db(self, networks: list = None) -> int:
         """
         Sync bundles from DatamartGH to database.
         
         Args:
-            db: Database session
             networks: List of networks to sync (MTN, VODAFONE, AIRTELTIGO). 
                      If None, syncs all networks.
                      
@@ -55,64 +54,33 @@ class BundleSyncService:
                     # Add markup to the price (50 pesewas = GHS 0.50)
                     price = base_price + self.PRICE_MARKUP
                     
-                    # Check if bundle exists
-                    existing = await db.execute(
-                        select(Bundle).where(
-                            Bundle.network == network,
-                            Bundle.capacity == capacity
-                        )
+                    # Upsert bundle (insert or update)
+                    self.bundle_repo.upsert_bundle(
+                        network=network,
+                        capacity=capacity,
+                        mb=mb,
+                        price=price,
+                        currency="GHS",
+                        active=True
                     )
-                    existing_bundle = existing.scalar_one_or_none()
-                    
-                    if existing_bundle:
-                        # Update existing bundle
-                        existing_bundle.mb = mb
-                        existing_bundle.price = price
-                        existing_bundle.active = True
-                    else:
-                        # Create new bundle
-                        new_bundle = Bundle(
-                            network=network,
-                            capacity=capacity,
-                            mb=mb,
-                            price=price,
-                            currency="GHS",
-                            active=True
-                        )
-                        db.add(new_bundle)
                     
                     total_synced += 1
                 
-                await db.commit()
-                
             except Exception as e:
-                await db.rollback()
                 # Log error but continue with other networks
                 print(f"Error syncing {network}: {str(e)}")
                 continue
         
         return total_synced
 
-    async def get_bundles_by_network(
-        self,
-        db: AsyncSession,
-        network: str
-    ) -> list[Bundle]:
+    async def get_bundles_by_network(self, network: str) -> list:
         """
         Get active bundles for a specific network.
         
         Args:
-            db: Database session
             network: Network name (MTN, VODAFONE, AIRTELTIGO)
             
         Returns:
-            List of Bundle models
+            List of bundle dictionaries
         """
-        stmt = select(Bundle).where(
-            Bundle.network == network,
-            Bundle.active == True
-        ).order_by(Bundle.price)
-        
-        result = await db.execute(stmt)
-        return list(result.scalars().all())
-
+        return self.bundle_repo.get_by_network(network, active_only=True)

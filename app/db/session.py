@@ -1,28 +1,12 @@
-from app.core.config import settings
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+"""
+Database session module - DEPRECATED
 
-# Create async engine
-engine = create_async_engine(
-    settings.DATABASE_URL,
-    echo=True,  # Set to False in production
-    future=True,
-)
+This module is no longer used since we migrated to Supabase REST API.
+Kept for reference only.
 
-# Create async session factory
-AsyncSessionLocal = async_sessionmaker(
-    engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
-    autocommit=False,
-    autoflush=False,
-)
+All database operations now use Supabase REST API via repository classes.
+See app/repository/ for the new implementation.
+"""
 
-
-async def get_db() -> AsyncSession:
-    """Dependency for getting async database session."""
-    async with AsyncSessionLocal() as session:
-        try:
-            yield session
-        finally:
-            await session.close()
-
+# This file is kept for backward compatibility but is not imported anywhere
+# All database operations use Supabase REST API client directly
