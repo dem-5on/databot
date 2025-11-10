@@ -1,7 +1,7 @@
-from telegram import Update
-from telegram.ext import ContextTypes
 import httpx
+from telegram import Update
 from app.core.config import settings
+from telegram.ext import ContextTypes
 from bot.keyboard import get_main_keyboard
 
 
@@ -15,7 +15,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message and update.message.text:
         parts = update.message.text.split()
         if len(parts) > 1:
-            referral_code = parts[1]  # /start REFCODE123
+            referral_code = parts[1]
     
     # Register user via backend
     try:

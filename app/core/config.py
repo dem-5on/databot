@@ -17,6 +17,15 @@ class Settings(BaseSettings):
     TELEGRAM_ADMIN_IDS: str  # Comma-separated list of admin Telegram IDs
     TELEGRAM_API_URL: str = "https://api.telegram.org/bot"
 
+    # WhatsApp Cloud API
+    WHATSAPP_PHONE_NUMBER_ID: str
+    WHATSAPP_ACCESS_TOKEN: str
+    WHATSAPP_APP_ID: str
+    WHATSAPP_APP_SECRET: str
+    WHATSAPP_VERIFY_TOKEN: str  # Custom token for webhook verification
+    WHATSAPP_API_URL: str = "https://graph.facebook.com/v18.0"
+    WHATSAPP_ADMIN_NUMBERS: str  # Comma-separated phone numbers with country code (e.g., "233XXXXXXXXX,233YYYYYYYYY")
+
     # DatamartGH
     DATAMART_API_URL: str = "https://api.datamartgh.shop/api/developer"
     DATAMART_API_KEY: str
@@ -28,7 +37,10 @@ class Settings(BaseSettings):
     PURCHASE_TIMEOUT: int = 60
 
     # Minimum deposit amount in GHS
-    MINIMUM_DEPOSIT_AMOUNT: int = 1
+    MINIMUM_DEPOSIT_AMOUNT: int
+
+    # REFERAL BONUS AMOUNT
+    REFERRAL_BONUS_AMOUNT: float = 1.0  # in GHS
 
     class Config:
         env_file = ".env"
@@ -40,6 +52,13 @@ class Settings(BaseSettings):
         if not self.TELEGRAM_ADMIN_IDS:
             return []
         return [int(id.strip()) for id in self.TELEGRAM_ADMIN_IDS.split(",") if id.strip()]
+    
+    @property
+    def whatsapp_admin_numbers_list(self) -> List[str]:
+        """Parse comma-separated WhatsApp admin phone numbers into list."""
+        if not self.WHATSAPP_ADMIN_NUMBERS:
+            return []
+        return [num.strip() for num in self.WHATSAPP_ADMIN_NUMBERS.split(",") if num.strip()]
 
 
 settings = Settings()

@@ -78,7 +78,6 @@ class WalletService:
         if transaction["status"] == TransactionStatus.FAILED.value:
             raise ValueError(f"Transaction {reference} has failed status. Cannot credit wallet.")
         
-        # Transaction is pending/processing - proceed with credit
         # Get or create wallet
         wallet = await self.wallet_repo.get_or_create_wallet(user_id)
         
@@ -86,7 +85,6 @@ class WalletService:
         wallet = await self.wallet_repo.credit_balance(wallet["id"], amount)
 
         # Update transaction status to SUCCESS
-        # Re-check status before updating to handle race conditions
         try:
             # Re-fetch transaction to check if another process already updated it
             updated_transaction = await self.transaction_repo.get_by_reference(reference)

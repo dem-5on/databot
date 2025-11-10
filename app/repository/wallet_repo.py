@@ -102,7 +102,6 @@ class WalletRepository(BaseRepository):
         
         try:
             # Use Supabase RPC for atomic operation
-            # This prevents race conditions by doing the calculation in the database
             result = await self.client.rpc(
                 'credit_wallet',
                 {
@@ -127,21 +126,7 @@ class WalletRepository(BaseRepository):
             logger.error(f"Error crediting wallet {wallet_id}: {str(e)}")
             raise ValueError(f"Error crediting wallet: {str(e)}")
     
-    async def _credit_balance_fallback(self, wallet_id: str, amount: Decimal) -> Dict[str, Any]:
-        """
-        Fallback method for crediting balance (less safe, prone to race conditions).
-        
-        WARNING: This method has race conditions. Use credit_balance() with RPC instead.
-        """
-        wallet = await self.get_by_id(wallet_id)
-        if not wallet:
-            raise ValueError(f"Wallet not found: {wallet_id}")
-        
-        current_balance = Decimal(wallet["balance"])
-        new_balance = current_balance + amount
-        
-        logger.warning(f"Using fallback credit method for wallet {wallet_id} (race condition risk)")
-        return await self.update(wallet_id, {"balance": str(new_balance)})
+    
     
     async def debit_balance(self, wallet_id: str, amount: Decimal) -> Dict[str, Any]:
         """
@@ -184,7 +169,7 @@ class WalletRepository(BaseRepository):
         except APIError as e:
             error_msg = str(e)
             if "insufficient balance" in error_msg.lower():
-                raise ValueError(f"Insufficient balance in wallet {wallet_id}")
+                logger.error(f"Insufficient balance in wallet {wallet_id}")
             
             # If RPC doesn't exist, fall back to traditional method with warning
             logger.warning(f"RPC 'debit_wallet' not found, using fallback method: {error_msg}")
@@ -195,26 +180,43 @@ class WalletRepository(BaseRepository):
             logger.error(f"Error debiting wallet {wallet_id}: {str(e)}")
             raise ValueError(f"Error debiting wallet: {str(e)}")
     
-    async def _debit_balance_fallback(self, wallet_id: str, amount: Decimal) -> Dict[str, Any]:
+    async def _credit_balance_fallback(self, wallet_id: str, amount: Decimal) -> Dict[str, Any]:
         """
-        Fallback method for debiting balance (less safe, prone to race conditions).
-        
-        WARNING: This method has race conditions. Use debit_balance() with RPC instead.
+        Fallback method for crediting balance (less safe, prone to race conditions).
         """
         wallet = await self.get_by_id(wallet_id)
         if not wallet:
             raise ValueError(f"Wallet not found: {wallet_id}")
         
-        current_balance = Decimal(wallet["balance"])
-        if current_balance < amount:
-            raise ValueError(
-                f"Insufficient balance. Available: {current_balance}, Required: {amount}"
-            )
+        # Ensure consistent Decimal arithmetic
+        amount = Decimal(str(amount))
+        current_balance = Decimal(str(wallet["balance"]))
+        new_balance = current_balance + amount
         
+        logger.warning(f"Using fallback credit method for wallet {wallet_id} (race condition risk)")
+        return await self.update(wallet_id, {"balance": str(new_balance)})
+
+    async def _debit_balance_fallback(self, wallet_id: str, amount: Decimal) -> Dict[str, Any]:
+        """
+        Fallback method for debiting balance (less safe, prone to race conditions).
+        """
+        wallet = await self.get_by_id(wallet_id)
+        if not wallet:
+            raise ValueError(f"Wallet not found: {wallet_id}")
+
+        # Ensure consistent Decimal arithmetic
+        amount = Decimal(str(amount))
+        current_balance = Decimal(str(wallet["balance"]))
+        
+        if current_balance < amount:
+            logger.error(f"Insufficient balance. Available: {current_balance}, Required: {amount}")
+            raise ValueError("Insufficient balance to complete this transaction.")
+
         new_balance = current_balance - amount
         
         logger.warning(f"Using fallback debit method for wallet {wallet_id} (race condition risk)")
         return await self.update(wallet_id, {"balance": str(new_balance)})
+
     
     async def get_balance(self, user_id: str) -> Decimal:
         """

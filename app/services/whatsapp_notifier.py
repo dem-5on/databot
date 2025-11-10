@@ -1,0 +1,239 @@
+import httpx
+import logging
+from typing import List, Dict
+from app.core.config import settings
+
+logger = logging.getLogger(__name__)
+
+
+class WhatsAppNotifierService:
+    """Service for sending WhatsApp messages via Cloud API."""
+    
+    def __init__(self):
+        self.phone_number_id = settings.WHATSAPP_PHONE_NUMBER_ID
+        self.access_token = settings.WHATSAPP_ACCESS_TOKEN
+        self.api_url = settings.WHATSAPP_API_URL
+        self.base_url = f"{self.api_url}/{self.phone_number_id}"
+        
+    def _get_headers(self) -> Dict[str, str]:
+        """Get headers for API requests."""
+        return {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json"
+        }
+    
+    async def send_text_message(
+        self,
+        phone_number: str,
+        text: str
+    ) -> bool:
+        """
+        Send a text message to a WhatsApp user.
+        
+        Args:
+            phone_number: Recipient phone number in E.164 format (e.g., "233XXXXXXXXX")
+            text: Message text
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            url = f"{self.base_url}/messages"
+            payload = {
+                "messaging_product": "whatsapp",
+                "recipient_type": "individual",
+                "to": phone_number,
+                "type": "text",
+                "text": {
+                    "preview_url": False,
+                    "body": text
+                }
+            }
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    url,
+                    json=payload,
+                    headers=self._get_headers(),
+                    timeout=30.0
+                )
+                response.raise_for_status()
+                
+                result = response.json()
+                if result.get("messages") and len(result["messages"]) > 0:
+                    logger.info(f"Sent WhatsApp message to {phone_number}")
+                    return True
+                else:
+                    logger.error(f"Failed to send WhatsApp message: {result}")
+                    return False
+                    
+        except httpx.HTTPStatusError as e:
+            error_msg = "Unknown error"
+            try:
+                error_data = e.response.json()
+                error_msg = error_data.get("error", {}).get("message", "Unknown error")
+            except:
+                error_msg = str(e)
+            
+            logger.error(f"Failed to send WhatsApp message to {phone_number}: {error_msg}")
+            return False
+        except Exception as e:
+            logger.error(f"Error sending WhatsApp message to {phone_number}: {str(e)}")
+            return False
+    
+    async def send_interactive_message(
+        self,
+        phone_number: str,
+        text: str,
+        buttons: List[Dict[str, str]]
+    ) -> bool:
+        if not text or not isinstance(text, str):
+            logger.error(f"Interactive message text cannot be empty. Phone: {phone_number}")
+            return False
+
+        if len(buttons) > 3:
+            logger.warning(f"Maximum 3 buttons allowed, got {len(buttons)}. Truncating.")
+            buttons = buttons[:3]
+
+        # Ensure each button has valid id/title
+        buttons = [
+            {"id": str(btn.get("id") or f"btn_{i}"), "title": btn.get("title") or f"Button {i+1}"}
+            for i, btn in enumerate(buttons)
+        ]
+
+        payload = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": phone_number,
+            "type": "interactive",
+            "interactive": {
+                "type": "button",
+                "body": {"text": text},
+                "action": {"buttons": [{"type": "reply", "reply": btn} for btn in buttons]}
+            }
+        }
+
+        logger.debug(f"Interactive payload: {payload}")
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{self.base_url}/messages",
+                    json=payload,
+                    headers=self._get_headers(),
+                    timeout=30.0
+                )
+                response.raise_for_status()
+                result = response.json()
+                if result.get("messages"):
+                    logger.info(f"Sent WhatsApp interactive message to {phone_number}")
+                    return True
+                else:
+                    logger.error(f"Failed to send WhatsApp interactive message: {result}")
+                    return False
+
+        except httpx.HTTPStatusError as e:
+            try:
+                error_data = e.response.json()
+                error_msg = error_data.get("error", {}).get("message", str(e))
+            except:
+                error_msg = str(e)
+            logger.error(f"Failed to send WhatsApp interactive message to {phone_number}: {error_msg}")
+            return False
+        except Exception as e:
+            logger.error(f"Error sending WhatsApp interactive message to {phone_number}: {str(e)}")
+            return False
+
+    
+    async def send_list_message(
+        self,
+        phone_number: str,
+        text: str,
+        button_text: str,
+        sections: List[Dict[str, any]]
+    ) -> bool:
+        """
+        Send a list message (for bundle selection, etc.).
+        
+        Args:
+            phone_number: Recipient phone number in E.164 format
+            text: Message text (header)
+            button_text: Button text (e.g., "Select Bundle")
+            sections: List of sections, each with 'title' and 'rows' (list of items with 'id' and 'title')
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            url = f"{self.base_url}/messages"
+            payload = {
+                "messaging_product": "whatsapp",
+                "recipient_type": "individual",
+                "to": phone_number,
+                "type": "interactive",
+                "interactive": {
+                    "type": "list",
+                    "body": {
+                        "text": text
+                    },
+                    "action": {
+                        "button": button_text,
+                        "sections": sections
+                    }
+                }
+            }
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    url,
+                    json=payload,
+                    headers=self._get_headers(),
+                    timeout=30.0
+                )
+                response.raise_for_status()
+                
+                result = response.json()
+                if result.get("messages") and len(result["messages"]) > 0:
+                    logger.info(f"Sent WhatsApp list message to {phone_number}")
+                    return True
+                else:
+                    logger.error(f"Failed to send WhatsApp list message: {result}")
+                    return False
+                    
+        except httpx.HTTPStatusError as e:
+            error_msg = "Unknown error"
+            try:
+                error_data = e.response.json()
+                error_msg = error_data.get("error", {}).get("message", "Unknown error")
+            except:
+                error_msg = str(e)
+            
+            logger.error(f"Failed to send WhatsApp list message to {phone_number}: {error_msg}")
+            return False
+        except Exception as e:
+            logger.error(f"Error sending WhatsApp list message to {phone_number}: {str(e)}")
+            return False
+    
+    async def send_admin_alert(self, text: str) -> bool:
+        """
+        Send an alert to all admin WhatsApp numbers.
+        
+        Args:
+            text: Alert message text
+            
+        Returns:
+            True if sent to at least one admin, False otherwise
+        """
+        admin_numbers = settings.whatsapp_admin_numbers_list
+        
+        if not admin_numbers:
+            logger.warning("No WhatsApp admin numbers configured")
+            return False
+        
+        success = False
+        for admin_number in admin_numbers:
+            if await self.send_text_message(admin_number, text):
+                success = True
+        
+        return success
+

@@ -1,8 +1,12 @@
 import httpx
+import logging
 from telegram import Update
 from app.core.config import settings
 from telegram.ext import ContextTypes, ConversationHandler
 from bot.keyboard import get_network_keyboard, get_bundles_keyboard, get_phone_input_keyboard
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Conversation states
 BUNDLES_NETWORK, BUNDLES_BUNDLE, BUNDLES_PHONE = range(3)
@@ -374,35 +378,35 @@ async def create_order_from_bundle(
             error_data = e.response.json()
             error_msg = error_data.get("detail", "Unknown error")
             # Log the full error for debugging
-            print(f"Order creation failed: {e.response.status_code} - {error_msg}")
-            print(f"Request data: telegram_id={telegram_id}, bundle_id={bundle_id}, phone={phone}")
+            logger.error(f"Order creation failed: {e.response.status_code} - {error_msg}")
+            logger.error(f"Request data: telegram_id={telegram_id}, bundle_id={bundle_id}, phone={phone}")
         except Exception as parse_error:
             error_msg = f"HTTP {e.response.status_code}: {str(e)}"
-            print(f"Failed to parse error response: {parse_error}")
-        
+            logger.error(f"Failed to parse error response: {parse_error}")
+
         try:
             if update.message:
                 await update.message.reply_text(
                     f"❌ Order Failed\n\n"
-                    f"Error: {error_msg}\n\n"
+                    f"{error_msg}\n\n"
                     "Please try again."
                 )
             elif update.callback_query:
                 query = update.callback_query
                 await query.edit_message_text(
                     f"❌ Order Failed\n\n"
-                    f"Error: {error_msg}\n\n"
+                    f"{error_msg}\n\n"
                     "Please try again."
                 )
         except Exception as send_error:
-            print(f"Failed to send error message: {send_error}")
+            logger.error(f"Failed to send error message: {send_error}")
         finally:
             context.user_data.clear()
     except Exception as e:
         error_msg = str(e)
-        print(f"Unexpected error in order creation: {error_msg}")
-        print(f"Request data: telegram_id={telegram_id}, bundle_id={bundle_id}, phone={phone}")
-        
+        logger.error(f"Unexpected error in order creation: {error_msg}")
+        logger.error(f"Request data: telegram_id={telegram_id}, bundle_id={bundle_id}, phone={phone}")
+
         try:
             if update.message:
                 await update.message.reply_text(
@@ -416,7 +420,7 @@ async def create_order_from_bundle(
                     "Please try again later."
                 )
         except Exception as send_error:
-            print(f"Failed to send error message: {send_error}")
+            logger.error(f"Failed to send error message: {send_error}")
         finally:
             context.user_data.clear()
 

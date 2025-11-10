@@ -1,11 +1,10 @@
-from sqlalchemy import Column, String, Numeric, ForeignKey, Enum as SQLEnum, JSON
+from sqlalchemy import Column, String, Numeric, ForeignKey, Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy import DateTime
 import uuid
 import enum
-
 from app.db.base import Base
 
 

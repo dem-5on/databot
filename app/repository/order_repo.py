@@ -238,7 +238,7 @@ class OrderRepository(BaseRepository):
         limit: int = 10
     ) -> List[Dict[str, Any]]:
         """
-        Get orders with bundle information joined (if supported by your schema).
+        Get orders with bundle information joined.
         
         Args:
             user_id: The user ID
@@ -249,7 +249,6 @@ class OrderRepository(BaseRepository):
         """
         try:
             # Using Supabase's foreign key relationship to join bundles
-            # Assumes you have a foreign key relationship set up
             response = await (
                 self.client.table(self.table_name)
                 .select("*, bundles(*)")

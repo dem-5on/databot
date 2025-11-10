@@ -9,6 +9,7 @@ from app.api.v1.bundles import router as bundles_router
 from app.api.v1.admin.tasks import router as admin_router
 from app.api.v1.referrals import router as referrals_router
 from app.api.v1.webhooks.paystack import router as paystack_webhook_router
+from app.api.v1.webhooks.whatsapp import router as whatsapp_webhook_router
 from app.services.scheduler import start_scheduler, stop_scheduler, sync_bundles_job
 
 
@@ -37,6 +38,7 @@ app.include_router(orders_router, prefix="/api/v1/orders", tags=["orders"])
 app.include_router(users_router, prefix="/api/v1/users", tags=["users"])
 app.include_router(bundles_router, prefix="/api/v1/bundles", tags=["bundles"])
 app.include_router(paystack_webhook_router, prefix="/api/v1/webhooks/paystack", tags=["webhooks"])
+app.include_router(whatsapp_webhook_router, prefix="/api/v1/webhooks/whatsapp", tags=["webhooks"])
 app.include_router(admin_router, prefix="/api/v1/admin", tags=["admin"])
 app.include_router(referrals_router, prefix="/api/v1/referrals", tags=["referrals"])
 app.include_router(sync_bundles, prefix="/sync", tags=["sync"])

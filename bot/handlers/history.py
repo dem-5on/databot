@@ -1,8 +1,7 @@
+import httpx
 from telegram import Update
 from telegram.ext import ContextTypes
-import httpx
 from app.core.config import settings
-from datetime import datetime
 
 
 async def history_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):

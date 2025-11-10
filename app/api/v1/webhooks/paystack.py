@@ -3,7 +3,7 @@ import json
 import logging
 from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
 from app.repository.transaction_repo import TransactionRepository
-from app.repository.user_repo import UserRepository
+# UserRepository no longer used - using UserService instead
 from app.services.notifier import NotifierService
 from app.services.wallet_service import WalletService
 from app.services.paystack_service import PaystackService
@@ -108,17 +108,31 @@ async def paystack_webhook(
             await referral_service.award_referral_bonus(transaction["user_id"])
             
             # Notify user with balance information
-            user_repo = UserRepository()
-            user = await user_repo.get_by_id(transaction["user_id"])
+            from app.services.user_service import UserService
+            user_service = UserService()
+            user = await user_service.get_user_by_id(transaction["user_id"])
             if user and wallet:
                 balance = wallet.get("balance", "0.00")
-                await NotifierService.send_user_message(
-                    telegram_id=int(user["telegram_id"]),
-                    text=f"✅ <b>Deposit Successful!</b>\n\n"
-                         f"Amount: GHS {transaction['amount']}\n"
-                         f"Your wallet has been credited.\n\n"
-                         f"💰 New Balance: GHS {balance}"
-                )
+                # Notify via Telegram if user has telegram_id
+                if user.get("telegram_id"):
+                    await NotifierService.send_user_message(
+                        telegram_id=int(user["telegram_id"]),
+                        text=f"✅ <b>Deposit Successful!</b>\n\n"
+                             f"Amount: GHS {transaction['amount']}\n"
+                             f"Your wallet has been credited.\n\n"
+                             f"💰 New Balance: GHS {balance}"
+                    )
+                # Notify via WhatsApp if user has whatsapp_phone
+                if user.get("whatsapp_phone"):
+                    from app.services.whatsapp_notifier import WhatsAppNotifierService
+                    whatsapp_notifier = WhatsAppNotifierService()
+                    await whatsapp_notifier.send_text_message(
+                        user["whatsapp_phone"],
+                        f"✅ *Deposit Successful!*\n\n"
+                        f"Amount: GHS {transaction['amount']}\n"
+                        f"Your wallet has been credited.\n\n"
+                        f"💰 New Balance: GHS {balance}"
+                    )
             
             return {"status": "ok", "message": "Wallet credited"}
         except Exception as e:

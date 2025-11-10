@@ -1,6 +1,13 @@
 import asyncio
 import logging
 from telegram import Update
+from app.core.config import settings
+from bot.handlers.help import help_handler
+from bot.handlers.start import start_command
+from bot.handlers.balance import balance_handler
+from bot.handlers.history import history_handler
+from bot.handlers.referral import referral_command
+from telegram.error import TimedOut, NetworkError, RetryAfter
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -10,10 +17,6 @@ from telegram.ext import (
     ContextTypes,
     filters
 )
-
-from app.core.config import settings
-from bot.handlers.start import start_command
-from bot.handlers.balance import balance_handler
 from bot.handlers.deposit import (
     deposit_start,
     deposit_amount,
@@ -34,11 +37,13 @@ from bot.handlers.bundles import (
     BUNDLES_BUNDLE,
     BUNDLES_PHONE
 )
-from bot.handlers.history import history_handler
-from bot.handlers.help import help_handler
-from bot.handlers.referral import referral_command
-from telegram.error import TimedOut, NetworkError, RetryAfter
 
+# Enable logging
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
 async def handle_keyboard_button_exit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle keyboard button press to exit conversation and route to appropriate handler."""
@@ -105,12 +110,6 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
             # If everything fails, just log it
             logger.debug(f"Could not send error notification: {e}")
 
-# Enable logging
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
 
 
 def setup_handlers(application: Application):

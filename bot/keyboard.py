@@ -1,5 +1,5 @@
+from typing import List
 from telegram import ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
-from typing import List, Optional
 
 
 def get_main_keyboard() -> ReplyKeyboardMarkup:

@@ -1,6 +1,7 @@
 import uuid
 import logging
 from decimal import Decimal
+from typing import Optional
 from pydantic import BaseModel
 from fastapi import APIRouter, HTTPException
 from app.services.notifier import NotifierService
@@ -15,7 +16,8 @@ from app.repository.transaction_repo import TransactionRepository
 router = APIRouter()
 
 class DepositInitRequest(BaseModel):
-    telegram_id: str
+    telegram_id: Optional[str] = None  # Optional, for Telegram users
+    user_id: Optional[str] = None  # Optional, for WhatsApp users (can pass user_id directly)
     amount: Decimal
     phone: str
     provider: str  # MTN, VODAFONE, AIRTELTIGO
@@ -34,11 +36,20 @@ async def init_deposit(request: DepositInitRequest):
     user_repo = UserRepository()
     transaction_repo = TransactionRepository()
     
-    # Get or create user
-    user, _ = await user_repo.get_or_create(request.telegram_id)
+    # Get user - either by user_id (WhatsApp) or telegram_id (Telegram)
+    if request.user_id:
+        # WhatsApp: user_id provided directly
+        user = await user_repo.get_by_id(request.user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+    elif request.telegram_id:
+        # Telegram: look up by telegram_id
+        user, _ = await user_repo.get_or_create(request.telegram_id)
+    else:
+        raise HTTPException(status_code=400, detail="Either telegram_id or user_id must be provided")
     
     # Generate unique reference
-    reference = f"IDH-{uuid.uuid4()}"
+    reference = f"DEP-{uuid.uuid4()}"
     
     # Create transaction record
     transaction = await transaction_repo.create_transaction(
@@ -56,7 +67,8 @@ async def init_deposit(request: DepositInitRequest):
     paystack_service = PaystackService()
     try:
         # Use this email if user doesn't have one
-        email = f"user_{request.telegram_id}@integers.com"
+        user_identifier = request.telegram_id or request.user_id or user["id"]
+        email = f"user_{user_identifier}@integers.com"
         
         paystack_response = await paystack_service.create_mobile_money_charge(
             email=email,
@@ -87,13 +99,25 @@ async def init_deposit(request: DepositInitRequest):
         raise HTTPException(status_code=500, detail=f"Failed to initiate charge: {str(e)}")
 
 
-@router.get("/balance/{telegram_id}")
-async def get_balance(telegram_id: str):
-    """Get wallet balance for user."""
-    user_repo = UserRepository()
+@router.get("/balance/{identifier}")
+async def get_balance(
+    identifier: str,
+    identifier_type: str = "telegram_id"  # "telegram_id" or "phone"
+):
+    """
+    Get wallet balance for user.
+    Can use either telegram_id or phone number as identifier.
+    """
+    from app.services.user_service import UserService
+    
+    user_service = UserService()
     wallet_service = WalletService()
     
-    user = await user_repo.get_by_telegram_id(telegram_id)
+    # Get user by identifier type
+    if identifier_type == "phone":
+        user = await user_service.get_user_by_whatsapp_phone(identifier)
+    else:
+        user = await user_service.get_user_by_telegram_id(identifier)
     
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -101,7 +125,9 @@ async def get_balance(telegram_id: str):
     balance = await wallet_service.get_balance(user["id"])
     
     return {
-        "telegram_id": telegram_id,
+        "user_id": user["id"],
+        "telegram_id": user.get("telegram_id"),
+        "phone": user.get("whatsapp_phone"),
         "balance": str(balance),
         "currency": "GHS"
     }
@@ -269,15 +295,28 @@ async def verify_deposit(reference: str):
                     
                     # Notify user (only if we just credited, not if webhook already did)
                     user_repo = UserRepository()
-                    user = user_repo.get_by_id(transaction["user_id"])
+                    user = await user_repo.get_by_id(transaction["user_id"])
                     if user:
-                        await NotifierService.send_user_message(
-                            telegram_id=int(user["telegram_id"]),
-                            text=f"✅ <b>Deposit Successful!</b>\n\n"
-                                 f"Amount: GHS {transaction['amount']}\n"
-                                 f"Your wallet has been credited.\n"
-                                 f"New balance available {wallet['balance']} for purchases."
-                        )
+                        # Notify via Telegram if user has telegram_id
+                        if user.get("telegram_id"):
+                            await NotifierService.send_user_message(
+                                telegram_id=int(user["telegram_id"]),
+                                text=f"✅ <b>Deposit Successful!</b>\n\n"
+                                     f"Amount: GHS {transaction['amount']}\n"
+                                     f"Your wallet has been credited.\n"
+                                     f"New balance available {wallet['balance']} for purchases."
+                            )
+                        # Notify via WhatsApp if user has phone number
+                        if user.get("phone"):
+                            from app.services.whatsapp_notifier import WhatsAppNotifierService
+                            whatsapp_notifier = WhatsAppNotifierService()
+                            await whatsapp_notifier.send_text_message(
+                                user["phone"],
+                                f"✅ *Deposit Successful!*\n\n"
+                                f"Amount: GHS {transaction['amount']}\n"
+                                f"Your wallet has been credited.\n\n"
+                                f"💰 New Balance: GHS {wallet['balance']}"
+                            )
                 else:
                     # Wallet was already credited by another process (likely webhook)
                     logging.info(f"Transaction {reference} was already credited by another process")
