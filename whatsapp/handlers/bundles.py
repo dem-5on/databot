@@ -1,6 +1,9 @@
 import httpx
 import logging
+from decimal import Decimal
 from app.core.config import settings
+from app.services.user_service import UserService
+from app.services.wallet_service import WalletService
 from app.services.whatsapp_notifier import WhatsAppNotifierService
 from app.utils.phone_utils import normalize_phone_number, validate_phone_number, detect_network
 from whatsapp.keyboard import get_network_buttons, get_back_cancel_buttons, get_bundle_list_section, get_bundle_buttons_simple
@@ -242,7 +245,10 @@ async def handle_phone(phone_number: str, phone_input: str, bot) -> None:
         normalized_bundle_phone = normalize_phone_number(phone_input)
         
         # Detect network and validate it matches selected bundle network
-        detected_network = detect_network(normalized_bundle_phone)
+        # detect_network can handle both normalized (233XXXXXXXXX) and local (0XXXXXXXXX) formats
+        detected_network = detect_network(phone_input)  # Use original input, detect_network handles all formats
+        logger.info(f"Network detection: phone_input={phone_input}, normalized={normalized_bundle_phone}, detected_network={detected_network}")
+        
         if not detected_network:
             await notifier.send_interactive_message(
                 normalized_phone,
@@ -272,7 +278,6 @@ async def handle_phone(phone_number: str, phone_input: str, bot) -> None:
             return
         
         # Get user from database
-        from app.services.user_service import UserService
         user_service = UserService()
         user = await user_service.get_user_by_whatsapp_phone(normalized_phone)
         
@@ -280,6 +285,35 @@ async def handle_phone(phone_number: str, phone_input: str, bot) -> None:
             await notifier.send_text_message(
                 normalized_phone,
                 "❌ User not found. Please start by typing 'hi'."
+            )
+            bot.clear_user_state(normalized_phone)
+            return
+        
+        # Check balance before creating order
+        wallet_service = WalletService()
+        bundle_price = Decimal(str(selected_bundle['price']))
+        
+        try:
+            balance = await wallet_service.get_balance(user["id"])
+            logger.info(f"Balance check: user_id={user['id']}, balance={balance}, bundle_price={bundle_price}")
+            
+            if balance < bundle_price:
+                # Insufficient balance - return to main menu
+                await bot.send_main_menu(
+                    normalized_phone,
+                    (
+                        f"❌ Insufficient balance.\n\n"
+                        f"Account balance is GHS {balance}, Required GHS {bundle_price} to buy {selected_bundle['capacity']}GB bundle."
+                    )
+                )
+                # Clear state to allow user to start fresh
+                bot.clear_user_state(normalized_phone)
+                return
+        except Exception as e:
+            logger.error(f"Error checking balance: {str(e)}", exc_info=True)
+            await bot.send_main_menu(
+                normalized_phone,
+                "❌ Error checking balance. Please try again later."
             )
             bot.clear_user_state(normalized_phone)
             return

@@ -57,23 +57,31 @@ def detect_network(phone: str) -> str | None:
     Detect mobile network from phone number prefix (Ghana networks).
     
     Args:
-        phone: Phone number (should be normalized first)
+        phone: Phone number in any format (0XXXXXXXXX, 233XXXXXXXXX, +233XXXXXXXXX)
         
     Returns:
         Network name (MTN, VODAFONE, AIRTELTIGO) or None if not detected
     """
-    # Normalize phone first
-    normalized = normalize_phone_number(phone)
+    # Remove whitespace, dashes, plus signs
+    phone = phone.strip().replace(" ", "").replace("-", "").replace("+", "")
     
-    # Remove country code for prefix detection (Ghana uses 233)
-    if normalized.startswith("233"):
-        prefix = normalized[3:6]  # Get first 3 digits after country code
-    elif len(normalized) >= 3:
-        prefix = normalized[:3]
+    # Extract the network prefix digits (first 2-3 digits that identify the network)
+    if phone.startswith("233") and len(phone) >= 5:
+        # International format: 233XXXXXXXXX -> extract first 2 digits after country code
+        # Then prepend "0" to match the 0XX format (e.g., 233241234567 -> "24" -> "024")
+        prefix_digits = phone[3:5]  # First 2 digits after country code
+        prefix = f"0{prefix_digits}"
+    elif phone.startswith("0") and len(phone) >= 4:
+        # Local format: 0XXXXXXXXX -> extract first 3 digits including the 0
+        prefix = phone[:3]  # "0" + next 2 digits (e.g., "024")
+    elif len(phone) >= 2:
+        # No country code or leading zero: extract first 2 digits and prepend "0"
+        prefix_digits = phone[:2]
+        prefix = f"0{prefix_digits}"
     else:
         return None
     
-    # Network prefix mapping for Ghana
+    # Network prefix mapping for Ghana (format: 0XX)
     network_prefixes = {
         "MTN": ["024", "054", "055", "059", "053"],
         "VODAFONE": ["020", "050"],

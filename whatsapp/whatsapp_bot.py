@@ -190,8 +190,39 @@ class WhatsAppBot:
             text_lower = message_text.lower().strip()
             
             # Handle menu commands (always available)
+            # Check if message contains a referral code (e.g., "hi REFCODE", "start REFCODE", or "start=REFCODE")
+            referral_code = None
+            
+            # Handle "start=REFCODE" format (from referral link)
+            if "start=" in text_lower:
+                try:
+                    # Extract code from "start=REFCODE" format
+                    # Handle both "start=REFCODE" and "start=REFCODE " (with trailing text)
+                    start_part = text_lower.split("start=", 1)[1].strip()
+                    # Extract first word/token (8 characters for referral code)
+                    code_part = start_part.split()[0] if start_part.split() else start_part[:8]
+                    # Take exactly 8 characters
+                    if len(code_part) >= 8:
+                        potential_code = code_part[:8].upper()
+                        if len(potential_code) == 8 and potential_code.isalnum():
+                            referral_code = potential_code
+                            text_lower = "start"  # Treat as start command
+                except (IndexError, ValueError):
+                    pass
+            
+            # Handle space-separated format (e.g., "hi REFCODE" or "start REFCODE")
+            if not referral_code and text_lower.startswith(("hi ", "hello ", "start ", "menu ")):
+                parts = message_text.strip().split(maxsplit=1)
+                if len(parts) > 1:
+                    # Check if second part looks like a referral code (8 alphanumeric characters)
+                    potential_code = parts[1].strip().upper()
+                    if len(potential_code) == 8 and potential_code.isalnum():
+                        referral_code = potential_code
+                        # Use the command part only (e.g., "hi")
+                        text_lower = parts[0].lower().strip()
+            
             if text_lower in ["hi", "hello", "start", "menu", "help"]:
-                await start.start_handler(normalized_phone, self)
+                await start.start_handler(normalized_phone, self, referral_code=referral_code)
                 return
             
             # Route based on state

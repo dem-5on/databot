@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     TELEGRAM_ADMIN_IDS: str  # Comma-separated list of admin Telegram IDs
     TELEGRAM_API_URL: str = "https://api.telegram.org/bot"
 
+    WHATSAPP_BUSINESS_PHONE: str  # WhatsApp Business phone number in E.164 format (e.g., "233XXXXXXXXX") for referral links
+    
     # WhatsApp Cloud API
     WHATSAPP_PHONE_NUMBER_ID: str
     WHATSAPP_ACCESS_TOKEN: str
@@ -40,7 +42,7 @@ class Settings(BaseSettings):
     MINIMUM_DEPOSIT_AMOUNT: int
 
     # REFERAL BONUS AMOUNT
-    REFERRAL_BONUS_AMOUNT: float = 1.0  # in GHS
+    REFERRAL_BONUS_AMOUNT: float = 0.5  # in GHS
 
     class Config:
         env_file = ".env"

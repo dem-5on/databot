@@ -47,7 +47,7 @@ async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"💰 <b>How it works:</b>\n"
                 f"• Share your referral link with friends\n"
                 f"• When they complete their first transaction (deposit or purchase),\n"
-                f"  you'll receive GHS 0.10 (10 pesewas) bonus!\n"
+                f"  you'll receive GHS {settings.REFERRAL_BONUS_AMOUNT} bonus!\n"
                 f"• The bonus is automatically added to your wallet balance.\n\n"
                 f"💡 <b>Tip:</b> Share your referral link to earn more rewards!"
             )

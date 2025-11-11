@@ -57,20 +57,25 @@ async def referral_handler(phone_number: str, bot) -> None:
                 referrals = stats_data.get("referrals", [])
                 bonuses_paid = sum(1 for r in referrals if r.get("bonus_paid"))
                 
-                # Create referral message (WhatsApp doesn't support clickable links like Telegram)
+                # Create WhatsApp referral link
+                business_phone = settings.WHATSAPP_BUSINESS_PHONE.replace("+", "").replace(" ", "").replace("-", "")
+                referral_link = f"https://wa.me/{business_phone}?text=start={referral_code}"
+                
+                # Create referral message with both code and link
                 message = (
                     f"🎯 Your Referral Program\n\n"
                     f"📝 Your Referral Code: {referral_code}\n\n"
+                    f"🔗 Your Referral Link:\n{referral_link}\n\n"
                     f"📊 Statistics:\n"
                     f"• Total Referrals: {total_referrals}\n"
                     f"• Bonuses Paid: {bonuses_paid}\n"
                     f"• Pending: {total_referrals - bonuses_paid}\n\n"
                     f"💰 How it works:\n"
-                    f"• Share your referral code: {referral_code}\n"
-                    f"• When someone uses your code and completes their first transaction (deposit or purchase),\n"
+                    f"• Share your referral link with friends\n"
+                    f"• When they complete their first transaction (deposit or purchase),\n"
                     f"  you'll receive GHS {settings.REFERRAL_BONUS_AMOUNT} bonus!\n"
                     f"• The bonus is automatically added to your wallet balance.\n\n"
-                    f"💡 Tip: Share your referral code to earn more rewards!"
+                    f"💡 Tip: Share your referral link to earn more rewards!"
                 )
                 
                 await bot.send_main_menu(normalized_phone, message)

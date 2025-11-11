@@ -7,13 +7,14 @@ from app.services.whatsapp_notifier import WhatsAppNotifierService
 logger = logging.getLogger(__name__)
 
 
-async def start_handler(phone_number: str, bot) -> None:
+async def start_handler(phone_number: str, bot, referral_code: str = None) -> None:
     """
     Handle start command or initial message.
     
     Args:
         phone_number: User's phone number
         bot: WhatsAppBot instance
+        referral_code: Optional referral code if provided by user
     """
     try:
         normalized_phone = normalize_phone_number(phone_number)
@@ -22,18 +23,40 @@ async def start_handler(phone_number: str, bot) -> None:
         # Register user via backend API
         try:
             async with httpx.AsyncClient() as client:
+                request_data = {
+                    "phone_number": normalized_phone,
+                    "name": None  # WhatsApp doesn't provide name in webhook
+                }
+                
+                # Add referral code if provided
+                if referral_code:
+                    request_data["referral_code"] = referral_code
+                
                 response = await client.post(
                     f"{settings.BACKEND_API_URL}/api/v1/users/ensure-whatsapp",
-                    json={
-                        "phone_number": normalized_phone,
-                        "name": None  # WhatsApp doesn't provide name in webhook
-                    },
+                    json=request_data,
                     timeout=10.0
                 )
                 response.raise_for_status()
                 user_data = response.json()
                 
                 is_new_user = user_data.get("is_new_user", False)
+                
+                # Handle referral code feedback
+                if referral_code:
+                    if is_new_user:
+                        # New user with referral code - show welcome message
+                        await notifier.send_text_message(
+                            normalized_phone,
+                            f"🎉 Welcome! You were referred by someone using code: {referral_code}\n"
+                            f"Complete your first transaction to activate their referral bonus!"
+                        )
+                    else:
+                        # Existing user trying to use referral code - inform them
+                        await notifier.send_text_message(
+                            normalized_phone,
+                            f"ℹ️ You're already registered. Referral codes can only be used when signing up for the first time."
+                        )
                 
                 if is_new_user:
                     # Send welcome message for new users

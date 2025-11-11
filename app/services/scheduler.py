@@ -24,17 +24,17 @@ async def sync_bundles_job():
 def start_scheduler():
     """Start the scheduler with all jobs."""
     
-    # Sync bundles every 24 hours at 2 AM
+    # Sync bundles every 24 hours at 12 AM
     scheduler.add_job(
         sync_bundles_job,
-        trigger=CronTrigger(hour=2, minute=0),  # Runs at 2:00 AM daily
+        trigger=CronTrigger(hour=0, minute=0),  # Runs at 12:00 AM daily
         id="sync_bundles_daily",
         name="Sync bundles from DatamartGH",
         replace_existing=True
     )
     
     scheduler.start()
-    logger.info("📅 Scheduler started - Bundle sync will run daily at 2:00 AM")
+    logger.info(f"📅 Scheduler started - Bundle sync will run daily at 12:00 AM")
 
 
 def stop_scheduler():
