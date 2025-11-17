@@ -1,5 +1,4 @@
-"""Repository modules for Supabase operations."""
-from app.repository.user_repo import UserRepository  # Legacy - kept for backward compatibility
+from app.repository.user_repo import UserRepository 
 from app.repository.base_user_repo import BaseUserRepository
 from app.repository.telegram_user_repo import TelegramUserRepository
 from app.repository.whatsapp_user_repo import WhatsAppUserRepository

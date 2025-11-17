@@ -36,13 +36,16 @@ class Settings(BaseSettings):
     BACKEND_API_URL: str = "http://localhost:8000"
 
     # Purchase timeout in seconds
-    PURCHASE_TIMEOUT: int = 60
+    PURCHASE_TIMEOUT: int
 
     # Minimum deposit amount in GHS
     MINIMUM_DEPOSIT_AMOUNT: int
 
-    # REFERAL BONUS AMOUNT
-    REFERRAL_BONUS_AMOUNT: float = 0.5  # in GHS
+    # REFERAL BONUS AMOUNT in GHS
+    REFERRAL_BONUS_AMOUNT: float
+
+    # Price markup percentage
+    PRICE_MARKUP_PERCENTAGE: int
 
     class Config:
         env_file = ".env"

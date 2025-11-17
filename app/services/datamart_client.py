@@ -1,6 +1,6 @@
 import httpx
-from typing import Dict, List, Optional
 from app.core.config import settings
+from typing import Dict, List, Optional
 
 
 class DatamartClient:
@@ -127,4 +127,3 @@ class DatamartClient:
                 raise ValueError(f"DatamartGH purchase failed: {error_msg}. Details: {error_details}")
             
             return data.get("data", {})
-

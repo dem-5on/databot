@@ -1,4 +1,5 @@
 from decimal import Decimal
+from app.core.config import settings
 from app.repository.bundle_repo import BundleRepository
 from app.services.datamart_client import DatamartClient
 
@@ -6,8 +7,8 @@ from app.services.datamart_client import DatamartClient
 class BundleSyncService:
     """Service for syncing bundles from DatamartGH to database using Supabase."""
 
-    # Markup to add to all bundle prices (50 pesewas = GHS 0.50)
-    PRICE_MARKUP = Decimal("0.50")
+    # Markup percentage to add to all bundle prices (e.g., 10 = 10%)
+    PRICE_MARKUP_PERCENTAGE = Decimal(str(settings.PRICE_MARKUP_PERCENTAGE))
 
     def __init__(self):
         self.datamart_client = DatamartClient()
@@ -50,11 +51,17 @@ class BundleSyncService:
                     except (ValueError, TypeError):
                         base_price = Decimal("0")
                     
-                    # Add markup to the price (50 pesewas = GHS 0.50)
-                    price = base_price + self.PRICE_MARKUP
+                    # Calculate markup amount (percentage of base price)
+                    markup_amount = base_price * (self.PRICE_MARKUP_PERCENTAGE / Decimal("100"))
+                    
+                    # Add markup to the base price
+                    price = base_price + markup_amount
+                    
+                    # Round to 2 decimal places for currency
+                    price = price.quantize(Decimal("0.01"))
                     
                     # Upsert bundle (insert or update)
-                    self.bundle_repo.upsert_bundle(
+                    await self.bundle_repo.upsert_bundle(
                         network=network,
                         capacity=capacity,
                         mb=mb,
@@ -82,4 +89,4 @@ class BundleSyncService:
         Returns:
             List of bundle dictionaries
         """
-        return self.bundle_repo.get_by_network(network, active_only=True)
+        return ( await self.bundle_repo.get_by_network(network, active_only=True))
