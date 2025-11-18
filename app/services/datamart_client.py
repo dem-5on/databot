@@ -99,7 +99,7 @@ class DatamartClient:
             capacity: Data capacity in GB as string (e.g., "5")
             ref: Optional reference for tracking
             
-        Returns:
+        Returns format:
             DatamartGH API response with purchaseId, transactionReference, price, etc.
         """
         datamart_network = self._map_network_to_datamart(network)
