@@ -3,6 +3,7 @@ import logging
 from telegram import Update
 from app.core.config import settings
 from telegram.ext import ContextTypes, ConversationHandler
+from app.utils.backend_client import BackendAPIClient
 from bot.keyboard import get_network_keyboard, get_bundles_keyboard, get_phone_input_keyboard
 
 logging.basicConfig(level=logging.INFO)
@@ -115,36 +116,36 @@ async def bundles_network(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Fetch bundles from backend
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{settings.BACKEND_API_URL}/api/v1/bundles",
-                params={"network": network},
-                timeout=10.0
-            )
-            response.raise_for_status()
-            data = response.json()
-            bundles = data.get("bundles", [])
-            
-            if not bundles:
-                await query.edit_message_text(
-                    f"❌ No bundles available for {NETWORK_DISPLAY.get(network, network)}.\n\n"
-                    "Please try another network or contact admin."
-                )
-                context.user_data.clear()
-                return ConversationHandler.END
-            
-            # Create keyboard with bundles
-            keyboard = get_bundles_keyboard(bundles)
-            
+        client = BackendAPIClient.get_client()
+        response = await client.get(
+            f"{settings.BACKEND_API_URL}/api/v1/bundles",
+            params={"network": network},
+            timeout=10.0
+        )
+        response.raise_for_status()
+        data = response.json()
+        bundles = data.get("bundles", [])
+        
+        if not bundles:
             await query.edit_message_text(
-                f"📱 Select a bundle for {NETWORK_DISPLAY.get(network, network)}:\n\n",
-                reply_markup=keyboard
+                f"❌ No bundles available for {NETWORK_DISPLAY.get(network, network)}.\n\n"
+                "Please try another network or contact admin."
             )
-            
-            # Store bundles in context for later use
-            context.user_data['bundles'] = bundles
-            
-            return BUNDLES_BUNDLE
+            context.user_data.clear()
+            return ConversationHandler.END
+        
+        # Create keyboard with bundles
+        keyboard = get_bundles_keyboard(bundles)
+        
+        await query.edit_message_text(
+            f"📱 Select a bundle for {NETWORK_DISPLAY.get(network, network)}:\n\n",
+            reply_markup=keyboard
+        )
+        
+        # Store bundles in context for later use
+        context.user_data['bundles'] = bundles
+        
+        return BUNDLES_BUNDLE
         
     except Exception as e:
         await query.edit_message_text(
@@ -339,38 +340,38 @@ async def create_order_from_bundle(
     telegram_id = str(user.id)
     
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{settings.BACKEND_API_URL}/api/v1/orders",
-                json={
-                    "telegram_id": telegram_id,
-                    "bundle_id": bundle_id,
-                    "phone": phone
-                },
-                timeout=60.0
+        client = BackendAPIClient.get_client()
+        response = await client.post(
+            f"{settings.BACKEND_API_URL}/api/v1/orders",
+            json={
+                "telegram_id": telegram_id,
+                "bundle_id": bundle_id,
+                "phone": phone
+            },
+            timeout=60.0
+        )
+        response.raise_for_status()
+        data = response.json()
+        
+        if isinstance(update, Update) and update.message:
+            await update.message.reply_text(
+                f"✅ Order Created Successfully!\n\n"
+                f"Order ID: {data.get('order_id', 'N/A')}\n"
+                f"Status: {data.get('order_status', 'N/A')}\n"
+                f"Vendor Reference: {data.get('vendor_reference', 'N/A')}\n\n"
+                f"Your data bundle will be delivered shortly."
             )
-            response.raise_for_status()
-            data = response.json()
-            
-            if isinstance(update, Update) and update.message:
-                await update.message.reply_text(
-                    f"✅ Order Created Successfully!\n\n"
-                    f"Order ID: {data.get('order_id', 'N/A')}\n"
-                    f"Status: {data.get('order_status', 'N/A')}\n"
-                    f"Vendor Reference: {data.get('vendor_reference', 'N/A')}\n\n"
-                    f"Your data bundle will be delivered shortly."
-                )
-            else:
-                query = update.callback_query
-                await query.edit_message_text(
-                    f"✅ Order Created Successfully!\n\n"
-                    f"Order ID: {data.get('order_id', 'N/A')}\n"
-                    f"Status: {data.get('order_status', 'N/A')}\n"
-                    f"Vendor Reference: {data.get('vendor_reference', 'N/A')}\n\n"
-                    f"Your data bundle will be delivered shortly."
-                )
-            
-            context.user_data.clear()
+        else:
+            query = update.callback_query
+            await query.edit_message_text(
+                f"✅ Order Created Successfully!\n\n"
+                f"Order ID: {data.get('order_id', 'N/A')}\n"
+                f"Status: {data.get('order_status', 'N/A')}\n"
+                f"Vendor Reference: {data.get('vendor_reference', 'N/A')}\n\n"
+                f"Your data bundle will be delivered shortly."
+            )
+        
+        context.user_data.clear()
             
     except httpx.HTTPStatusError as e:
         error_msg = "Unknown error"

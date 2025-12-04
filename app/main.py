@@ -1,4 +1,7 @@
 import logging
+import uvicorn
+
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.api.v1.sync import router as sync_bundles
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,10 +20,40 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Lifespan context manager for the FastAPI application.
+    Handles startup and shutdown events.
+    """
+    # Startup logic
+    logger.info("Running initial bundle sync...")
+    await sync_bundles_job()
+    
+    # Start scheduler for daily syncs
+    start_scheduler()
+    
+    yield
+    
+    # Shutdown logic
+    stop_scheduler()
+    
+    # Clean up shared HTTP clients
+    try:
+        from app.services.whatsapp_notifier import WhatsAppNotifierService
+        from app.utils.backend_client import BackendAPIClient
+        await WhatsAppNotifierService.close_client()
+        await BackendAPIClient.close_client()
+        logger.info("Closed shared HTTP clients")
+    except Exception as e:
+        logger.error(f"Error closing HTTP clients: {e}")
+
+
 app = FastAPI(
     title="Data Bundle Purchase System(Intejers)",
     description="API for purchasing mobile data bundles via Telegram bot",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # CORS middleware
@@ -44,23 +77,6 @@ app.include_router(referrals_router, prefix="/api/v1/referrals", tags=["referral
 app.include_router(sync_bundles, prefix="/sync", tags=["sync"])
 
 
-@app.on_event("startup")
-async def startup_event():
-    """Run on application startup."""
-    # Sync bundles immediately on startup
-    logger.info("Running initial bundle sync...")
-    await sync_bundles_job()
-    
-    # Start scheduler for daily syncs
-    start_scheduler()
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Run on application shutdown."""
-    stop_scheduler()
-
-
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
@@ -72,3 +88,6 @@ async def root():
     """Root endpoint."""
     return {"message": "Intejers Data Bundle Purchase System API"}
 
+
+if __name__ == "__main__":
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)

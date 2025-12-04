@@ -9,11 +9,21 @@ logger = logging.getLogger(__name__)
 class WhatsAppNotifierService:
     """Service for sending WhatsApp messages via Cloud API."""
     
+    # Shared client for connection pooling
+    _client: httpx.AsyncClient = None
+    
     def __init__(self):
         self.phone_number_id = settings.WHATSAPP_PHONE_NUMBER_ID
         self.access_token = settings.WHATSAPP_ACCESS_TOKEN
         self.api_url = settings.WHATSAPP_API_URL
         self.base_url = f"{self.api_url}/{self.phone_number_id}"
+        
+        # Initialize shared client if not already created
+        if WhatsAppNotifierService._client is None:
+            WhatsAppNotifierService._client = httpx.AsyncClient(
+                timeout=30.0,
+                limits=httpx.Limits(max_keepalive_connections=5, max_connections=10)
+            )
         
     def _get_headers(self) -> Dict[str, str]:
         """Get headers for API requests."""
@@ -21,6 +31,13 @@ class WhatsAppNotifierService:
             "Authorization": f"Bearer {self.access_token}",
             "Content-Type": "application/json"
         }
+    
+    @classmethod
+    async def close_client(cls):
+        """Close the shared HTTP client. Should be called on application shutdown."""
+        if cls._client is not None:
+            await cls._client.aclose()
+            cls._client = None
     
     async def send_text_message(
         self,
@@ -50,22 +67,20 @@ class WhatsAppNotifierService:
                 }
             }
             
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    url,
-                    json=payload,
-                    headers=self._get_headers(),
-                    timeout=30.0
-                )
-                response.raise_for_status()
-                
-                result = response.json()
-                if result.get("messages") and len(result["messages"]) > 0:
-                    logger.info(f"Sent WhatsApp message to {phone_number}")
-                    return True
-                else:
-                    logger.error(f"Failed to send WhatsApp message: {result}")
-                    return False
+            response = await self._client.post(
+                url,
+                json=payload,
+                headers=self._get_headers()
+            )
+            response.raise_for_status()
+            
+            result = response.json()
+            if result.get("messages") and len(result["messages"]) > 0:
+                logger.info(f"Sent WhatsApp message to {phone_number}")
+                return True
+            else:
+                logger.error(f"Failed to send WhatsApp message: {result}")
+                return False
                     
         except httpx.HTTPStatusError as e:
             error_msg = "Unknown error"
@@ -116,21 +131,19 @@ class WhatsAppNotifierService:
         logger.debug(f"Interactive payload: {payload}")
 
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"{self.base_url}/messages",
-                    json=payload,
-                    headers=self._get_headers(),
-                    timeout=30.0
-                )
-                response.raise_for_status()
-                result = response.json()
-                if result.get("messages"):
-                    logger.info(f"Sent WhatsApp interactive message to {phone_number}")
-                    return True
-                else:
-                    logger.error(f"Failed to send WhatsApp interactive message: {result}")
-                    return False
+            response = await self._client.post(
+                f"{self.base_url}/messages",
+                json=payload,
+                headers=self._get_headers()
+            )
+            response.raise_for_status()
+            result = response.json()
+            if result.get("messages"):
+                logger.info(f"Sent WhatsApp interactive message to {phone_number}")
+                return True
+            else:
+                logger.error(f"Failed to send WhatsApp interactive message: {result}")
+                return False
 
         except httpx.HTTPStatusError as e:
             try:
@@ -183,22 +196,20 @@ class WhatsAppNotifierService:
                 }
             }
             
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    url,
-                    json=payload,
-                    headers=self._get_headers(),
-                    timeout=30.0
-                )
-                response.raise_for_status()
-                
-                result = response.json()
-                if result.get("messages") and len(result["messages"]) > 0:
-                    logger.info(f"Sent WhatsApp list message to {phone_number}")
-                    return True
-                else:
-                    logger.error(f"Failed to send WhatsApp list message: {result}")
-                    return False
+            response = await self._client.post(
+                url,
+                json=payload,
+                headers=self._get_headers()
+            )
+            response.raise_for_status()
+            
+            result = response.json()
+            if result.get("messages") and len(result["messages"]) > 0:
+                logger.info(f"Sent WhatsApp list message to {phone_number}")
+                return True
+            else:
+                logger.error(f"Failed to send WhatsApp list message: {result}")
+                return False
                     
         except httpx.HTTPStatusError as e:
             error_msg = "Unknown error"

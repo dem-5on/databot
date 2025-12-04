@@ -6,6 +6,7 @@ from app.services.user_service import UserService
 from app.services.wallet_service import WalletService
 from app.services.whatsapp_notifier import WhatsAppNotifierService
 from app.utils.phone_utils import normalize_phone_number, validate_phone_number, detect_network
+from app.utils.backend_client import BackendAPIClient
 from whatsapp.keyboard import get_network_buttons, get_back_cancel_buttons, get_bundle_list_section, get_bundle_buttons_simple
 
 logger = logging.getLogger(__name__)
@@ -66,61 +67,61 @@ async def handle_network(phone_number: str, network: str, bot) -> None:
         
         # Fetch bundles from backend
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    f"{settings.BACKEND_API_URL}/api/v1/bundles",
-                    params={"network": network},
-                    timeout=10.0
+            client = BackendAPIClient.get_client()
+            response = await client.get(
+                f"{settings.BACKEND_API_URL}/api/v1/bundles",
+                params={"network": network},
+                timeout=10.0
+            )
+            response.raise_for_status()
+            data = response.json()
+            bundles = data.get("bundles", [])
+            
+            if not bundles:
+                await bot.send_main_menu(
+                    normalized_phone,
+                    f"❌ No bundles available for {NETWORK_DISPLAY.get(network, network)}.\n\nPlease try another network or contact admin."
                 )
-                response.raise_for_status()
-                data = response.json()
-                bundles = data.get("bundles", [])
+                bot.clear_user_state(normalized_phone)
+                return
+            
+            # Store bundles in state
+            bot.update_user_state_data(normalized_phone, bundles=bundles)
+            
+            # If 3 or fewer bundles, use buttons
+            if len(bundles) <= 3:
+                bundle_buttons = get_bundle_buttons_simple(bundles)
+                bundle_buttons.extend(get_back_cancel_buttons())
                 
-                if not bundles:
-                    await bot.send_main_menu(
-                        normalized_phone,
-                        f"❌ No bundles available for {NETWORK_DISPLAY.get(network, network)}.\n\nPlease try another network or contact admin."
-                    )
-                    bot.clear_user_state(normalized_phone)
-                    return
+                bundle_list_text = "\n".join([
+                    f"• {b['capacity']} - GHS {b['price']}"
+                    for b in bundles
+                ])
                 
-                # Store bundles in state
-                bot.update_user_state_data(normalized_phone, bundles=bundles)
+                await notifier.send_interactive_message(
+                    normalized_phone,
+                    f"📱 Select a bundle for {NETWORK_DISPLAY.get(network, network)}:\n\n{bundle_list_text}",
+                    bundle_buttons
+                )
+            else:
+                # Use list message for more bundles
+                section = get_bundle_list_section(bundles, network)
+                back_cancel = get_back_cancel_buttons()
                 
-                # If 3 or fewer bundles, use buttons
-                if len(bundles) <= 3:
-                    bundle_buttons = get_bundle_buttons_simple(bundles)
-                    bundle_buttons.extend(get_back_cancel_buttons())
-                    
-                    bundle_list_text = "\n".join([
-                        f"• {b['capacity']} - GHS {b['price']}"
-                        for b in bundles
-                    ])
-                    
-                    await notifier.send_interactive_message(
-                        normalized_phone,
-                        f"📱 Select a bundle for {NETWORK_DISPLAY.get(network, network)}:\n\n{bundle_list_text}",
-                        bundle_buttons
-                    )
-                else:
-                    # Use list message for more bundles
-                    section = get_bundle_list_section(bundles, network)
-                    back_cancel = get_back_cancel_buttons()
-                    
-                    # Send list message
-                    await notifier.send_list_message(
-                        normalized_phone,
-                        f"📱 Select a bundle for {NETWORK_DISPLAY.get(network, network)}:",
-                        "Select Bundle",
-                        [section]
-                    )
-                    
-                    # Also send back/cancel buttons
-                    await notifier.send_interactive_message(
-                        normalized_phone,
-                        "",
-                        back_cancel
-                    )
+                # Send list message
+                await notifier.send_list_message(
+                    normalized_phone,
+                    f"📱 Select a bundle for {NETWORK_DISPLAY.get(network, network)}:",
+                    "Select Bundle",
+                    [section]
+                )
+                
+                # Also send back/cancel buttons
+                await notifier.send_interactive_message(
+                    normalized_phone,
+                    "",
+                    back_cancel
+                )
                 
         except httpx.HTTPStatusError as e:
             logger.error(f"Failed to fetch bundles: {e}")
@@ -320,46 +321,46 @@ async def handle_phone(phone_number: str, phone_input: str, bot) -> None:
         
         # Create order via backend API
         try:
-            async with httpx.AsyncClient() as client:
-                logger.info(f"Creating order: user_id={user['id']}, bundle_id={selected_bundle['id']}, phone={normalized_bundle_phone}")
+            client = BackendAPIClient.get_client()
+            logger.info(f"Creating order: user_id={user['id']}, bundle_id={selected_bundle['id']}, phone={normalized_bundle_phone}")
+            
+            response = await client.post(
+                f"{settings.BACKEND_API_URL}/api/v1/orders",
+                json={
+                    "user_id": str(user["id"]),  # Pass user_id directly for WhatsApp
+                    "bundle_id": selected_bundle["id"],
+                    "phone": normalized_bundle_phone
+                },
+                timeout=30.0
+            )
+            response.raise_for_status()
+            data = response.json()
                 
-                response = await client.post(
-                    f"{settings.BACKEND_API_URL}/api/v1/orders",
-                    json={
-                        "user_id": str(user["id"]),  # Pass user_id directly for WhatsApp
-                        "bundle_id": selected_bundle["id"],
-                        "phone": normalized_bundle_phone
-                    },
-                    timeout=30.0
+            logger.info(f"Order creation response: {data}")
+            
+            if data.get("status") == "success":
+                order = data.get("order", {})
+                vendor_ref = order.get("vendor_reference", "N/A")
+                
+                await bot.send_main_menu(
+                    normalized_phone,
+                    (
+                        f"✅ Order Created Successfully!\n\n"
+                        f"Bundle: {selected_bundle['capacity']}\n"
+                        f"Network: {NETWORK_DISPLAY.get(selected_network, selected_network)}\n"
+                        f"Phone: {normalized_bundle_phone}\n"
+                        f"Price: GHS {selected_bundle['price']}\n"
+                        f"Status: {order.get('status', 'pending')}\n\n"
+                        f"Vendor Reference: {vendor_ref}\n\n"
+                        f"Your bundle will be delivered shortly. You can check your order status in History."
+                    )
                 )
-                response.raise_for_status()
-                data = response.json()
-                
-                logger.info(f"Order creation response: {data}")
-                
-                if data.get("status") == "success":
-                    order = data.get("order", {})
-                    vendor_ref = order.get("vendor_reference", "N/A")
-                    
-                    await bot.send_main_menu(
-                        normalized_phone,
-                        (
-                            f"✅ Order Created Successfully!\n\n"
-                            f"Bundle: {selected_bundle['capacity']}\n"
-                            f"Network: {NETWORK_DISPLAY.get(selected_network, selected_network)}\n"
-                            f"Phone: {normalized_bundle_phone}\n"
-                            f"Price: GHS {selected_bundle['price']}\n"
-                            f"Status: {order.get('status', 'pending')}\n\n"
-                            f"Vendor Reference: {vendor_ref}\n\n"
-                            f"Your bundle will be delivered shortly. You can check your order status in History."
-                        )
-                    )
-                else:
-                    error_msg = data.get("message", "Unknown error")
-                    await bot.send_main_menu(
-                        normalized_phone,
-                        f"❌ Order Failed\n\nPlease try again OR contact support if issue persists."
-                    )
+            else:
+                error_msg = data.get("message", "Unknown error")
+                await bot.send_main_menu(
+                    normalized_phone,
+                    f"❌ Order Failed\n\nPlease try again OR contact support if issue persists."
+                )
                 
                 bot.clear_user_state(normalized_phone)
                 

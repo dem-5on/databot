@@ -5,7 +5,6 @@ from typing import Optional
 from pydantic import BaseModel
 from fastapi import APIRouter, HTTPException
 from app.services.notifier import NotifierService
-from app.repository.user_repo import UserRepository
 from app.services.wallet_service import WalletService
 from app.services.paystack_service import PaystackService
 from app.services.referral_service import ReferralService
@@ -33,18 +32,22 @@ async def init_deposit(request: DepositInitRequest):
     """
     Initialize a deposit transaction and create Paystack charge.
     """
-    user_repo = UserRepository()
+    from app.services.user_service import UserService
+    
+    user_service = UserService()
     transaction_repo = TransactionRepository()
     
     # Get user - either by user_id (WhatsApp) or telegram_id (Telegram)
     if request.user_id:
         # WhatsApp: user_id provided directly
-        user = await user_repo.get_by_id(request.user_id)
+        from app.repository.base_user_repo import BaseUserRepository
+        base_user_repo = BaseUserRepository()
+        user = await base_user_repo.get_by_id(request.user_id)
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
     elif request.telegram_id:
-        # Telegram: look up by telegram_id
-        user, _ = await user_repo.get_or_create(request.telegram_id)
+        # Telegram: use UserService for proper multi-table lookup
+        user, _ = await user_service.get_or_create_telegram_user(request.telegram_id)
     else:
         raise HTTPException(status_code=400, detail="Either telegram_id or user_id must be provided")
     
@@ -294,7 +297,8 @@ async def verify_deposit(reference: str):
                     await referral_service.award_referral_bonus(transaction["user_id"])
                     
                     # Notify user (only if we just credited, not if webhook already did)
-                    user_repo = UserRepository()
+                    from app.repository.base_user_repo import BaseUserRepository
+                    user_repo = BaseUserRepository()
                     user = await user_repo.get_by_id(transaction["user_id"])
                     if user:
                         # Notify via Telegram if user has telegram_id
