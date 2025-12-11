@@ -26,8 +26,8 @@ class Settings(BaseSettings):
     WHATSAPP_APP_SECRET: str
     WHATSAPP_VERIFY_TOKEN: str  # Custom token for webhook verification
     WHATSAPP_API_URL: str = "https://graph.facebook.com/v18.0"
-    WHATSAPP_ADMIN_NUMBERS: str  # Comma-separated phone numbers with country code (e.g., "233XXXXXXXXX,233YYYYYYYYY")
-
+    WHATSAPP_ADMIN_NUMBERS: str  
+    
     # DatamartGH
     DATAMART_API_URL: str = "https://api.datamartgh.shop/api/developer"
     DATAMART_API_KEY: str
@@ -46,6 +46,10 @@ class Settings(BaseSettings):
 
     # Price markup percentage
     PRICE_MARKUP_PERCENTAGE: int
+
+    # HTTP Connection Pool Settings
+    MAX_KEEPALIVE_CONNECTIONS: int = 20
+    MAX_CONNECTIONS: int = 100
 
     class Config:
         env_file = ".env"
@@ -67,4 +71,5 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
 

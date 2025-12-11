@@ -214,7 +214,8 @@ async def debug_full_user_data(
         try:
             telegram_id_as_uuid_check = await supabase.table("transactions").select("*").eq("user_id", user["telegram_id"]).execute()
             transactions_with_telegram_id = telegram_id_as_uuid_check.data or []
-        except:
+        except Exception as query_error:
+            logger.warning(f"Failed to query transactions with telegram_id: {query_error}")
             transactions_with_telegram_id = []
     
     orders_with_telegram_id = []
@@ -222,7 +223,8 @@ async def debug_full_user_data(
         try:
             telegram_id_as_uuid_check = await supabase.table("orders").select("*").eq("user_id", user["telegram_id"]).execute()
             orders_with_telegram_id = telegram_id_as_uuid_check.data or []
-        except:
+        except Exception as query_error:
+            logger.warning(f"Failed to query orders with telegram_id: {query_error}")
             orders_with_telegram_id = []
     
     # 9. Sample unique user_ids from transactions and orders

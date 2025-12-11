@@ -3,13 +3,14 @@ import logging
 from decimal import Decimal
 from typing import Optional
 from pydantic import BaseModel
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from app.services.notifier import NotifierService
 from app.services.wallet_service import WalletService
 from app.services.paystack_service import PaystackService
 from app.services.referral_service import ReferralService
 from app.core.constants import TransactionType, TransactionStatus
 from app.repository.transaction_repo import TransactionRepository
+from app.core.rate_limit import limiter
 
 
 router = APIRouter()
@@ -28,7 +29,8 @@ class DepositConfirmRequest(BaseModel):
 
 
 @router.post("/deposit/init")
-async def init_deposit(request: DepositInitRequest):
+@limiter.limit("5/minute")
+async def init_deposit(request: DepositInitRequest, http_request: Request):
     """
     Initialize a deposit transaction and create Paystack charge.
     """

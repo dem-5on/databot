@@ -2,6 +2,7 @@ import logging
 import hmac
 import hashlib
 from fastapi import APIRouter, Request, HTTPException, Query
+from app.core.rate_limit import limiter
 from app.core.config import settings
 from whatsapp.whatsapp_bot import WhatsAppBot
 
@@ -12,10 +13,12 @@ router = APIRouter()
 bot = WhatsAppBot()
 
 @router.get("")
+@limiter.limit("100/minute")
 async def verify_webhook(
     mode: str = Query(..., alias="hub.mode"),
     token: str = Query(..., alias="hub.verify_token"),
-    challenge: str = Query(..., alias="hub.challenge")
+    challenge: str = Query(..., alias="hub.challenge"),
+    request: Request = None # Add request parameter for rate limiting
 ):
     """
     Verify WhatsApp webhook.
@@ -32,6 +35,7 @@ async def verify_webhook(
 
 
 @router.post("")
+@limiter.limit("100/minute")
 async def handle_webhook(request: Request):
     """
     Handle incoming WhatsApp webhook events.
@@ -75,16 +79,13 @@ async def handle_webhook(request: Request):
                             "statuses": value["statuses"]
                         }
                         await bot.handle_webhook_event(event)
-        
-        # Return 200 immediately to acknowledge receipt
-        return {"status": "ok"}
+                return {"status": "ok"}
         
     except json.JSONDecodeError as e:
         logger.error(f"Invalid JSON in webhook payload: {str(e)}")
         raise HTTPException(status_code=400, detail="Invalid JSON")
     except Exception as e:
         logger.error(f"Error handling webhook: {str(e)}", exc_info=True)
-        # Still return 200 to prevent WhatsApp from retrying
         return {"status": "error", "message": str(e)}
 
 

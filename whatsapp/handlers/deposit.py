@@ -342,7 +342,8 @@ async def handle_phone(phone_number: str, phone_input: str, bot) -> None:
             try:
                 error_data = e.response.json()
                 error_msg = error_data.get("detail", "Unknown error")
-            except:
+            except Exception as json_error:
+                logger.warning(f"Failed to parse error response JSON: {json_error}")
                 error_msg = str(e)
             
             logger.error(f"Deposit init failed: {error_msg}")
@@ -527,7 +528,8 @@ async def handle_otp(phone_number: str, otp: str, bot) -> None:
             try:
                 error_data = e.response.json()
                 error_msg = error_data.get("detail", "Unknown error")
-            except:
+            except Exception as json_error:
+                logger.warning(f"Failed to parse error response JSON: {json_error}")
                 error_msg = str(e)
             
             logger.error(f"OTP verification failed: {error_msg}")

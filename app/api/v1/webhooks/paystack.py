@@ -1,4 +1,3 @@
-"""Paystack webhook handler using Supabase repositories."""
 import json
 import logging
 from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
@@ -10,11 +9,13 @@ from app.services.paystack_service import PaystackService
 from app.services.referral_service import ReferralService
 from app.core.constants import TransactionStatus
 from decimal import Decimal
+from app.core.rate_limit import limiter
 
 router = APIRouter()
 
 
 @router.post("")
+@limiter.limit("100/minute")
 async def paystack_webhook(
     request: Request,
     background_tasks: BackgroundTasks

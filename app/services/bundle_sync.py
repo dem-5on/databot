@@ -74,7 +74,9 @@ class BundleSyncService:
                 
             except Exception as e:
                 # Log error but continue with other networks
-                print(f"Error syncing {network}: {str(e)}")
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Error syncing {network}: {str(e)}")
                 continue
         
         return total_synced

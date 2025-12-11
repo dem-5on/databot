@@ -18,11 +18,20 @@ class WhatsAppNotifierService:
         self.api_url = settings.WHATSAPP_API_URL
         self.base_url = f"{self.api_url}/{self.phone_number_id}"
         
-        # Initialize shared client if not already created
-        if WhatsAppNotifierService._client is None:
-            WhatsAppNotifierService._client = httpx.AsyncClient(
+        # Ensure shared client is initialized
+        self._ensure_client()
+        
+    @classmethod
+    def _ensure_client(cls):
+        """Ensure HTTP client is initialized."""
+        if cls._client is None:
+            cls._client = httpx.AsyncClient(
                 timeout=30.0,
-                limits=httpx.Limits(max_keepalive_connections=5, max_connections=10)
+                limits=httpx.Limits(
+                    # Use a portion of the total pool for WhatsApp
+                    max_keepalive_connections=settings.MAX_KEEPALIVE_CONNECTIONS // 4,
+                    max_connections=settings.MAX_CONNECTIONS // 4
+                )
             )
         
     def _get_headers(self) -> Dict[str, str]:
@@ -87,7 +96,8 @@ class WhatsAppNotifierService:
             try:
                 error_data = e.response.json()
                 error_msg = error_data.get("error", {}).get("message", "Unknown error")
-            except:
+            except Exception as json_error:
+                logger.warning(f"Failed to parse error response JSON: {json_error}")
                 error_msg = str(e)
             
             logger.error(f"Failed to send WhatsApp message to {phone_number}: {error_msg}")
@@ -149,7 +159,8 @@ class WhatsAppNotifierService:
             try:
                 error_data = e.response.json()
                 error_msg = error_data.get("error", {}).get("message", str(e))
-            except:
+            except Exception as json_error:
+                logger.warning(f"Failed to parse error response JSON: {json_error}")
                 error_msg = str(e)
             logger.error(f"Failed to send WhatsApp interactive message to {phone_number}: {error_msg}")
             return False
@@ -216,7 +227,8 @@ class WhatsAppNotifierService:
             try:
                 error_data = e.response.json()
                 error_msg = error_data.get("error", {}).get("message", "Unknown error")
-            except:
+            except Exception as json_error:
+                logger.warning(f"Failed to parse error response JSON: {json_error}")
                 error_msg = str(e)
             
             logger.error(f"Failed to send WhatsApp list message to {phone_number}: {error_msg}")

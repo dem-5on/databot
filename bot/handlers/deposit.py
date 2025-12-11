@@ -219,7 +219,8 @@ async def deposit_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             error_data = e.response.json()
             error_msg = error_data.get("detail", "Unknown error")
-        except:
+        except Exception as json_error:
+            logger.warning(f"Failed to parse error response JSON: {json_error}")
             error_msg = str(e)
         
         logger.error(f"Deposit init failed with HTTP error: {error_msg}")
@@ -430,7 +431,8 @@ async def deposit_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             error_data = e.response.json()
             error_msg = error_data.get("detail", "Unknown error")
-        except:
+        except Exception as json_error:
+            logger.warning(f"Failed to parse error response JSON: {json_error}")
             error_msg = str(e)
         
         logger.error(f"OTP verification failed with HTTP error: {error_msg}")

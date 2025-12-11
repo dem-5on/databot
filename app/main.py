@@ -2,7 +2,7 @@ import logging
 import uvicorn
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from app.api.v1.sync import router as sync_bundles
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.users import router as users_router
@@ -14,6 +14,9 @@ from app.api.v1.referrals import router as referrals_router
 from app.api.v1.webhooks.paystack import router as paystack_webhook_router
 from app.api.v1.webhooks.whatsapp import router as whatsapp_webhook_router
 from app.services.scheduler import start_scheduler, stop_scheduler, sync_bundles_job
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from app.core.rate_limit import limiter
 
 
 logging.basicConfig(level=logging.INFO)
@@ -26,6 +29,30 @@ async def lifespan(app: FastAPI):
     Lifespan context manager for the FastAPI application.
     Handles startup and shutdown events.
     """
+    # Validate critical environment variables on startup
+    from app.core.config import settings
+    
+    required_settings = {
+        "SUPABASE_URL": settings.SUPABASE_URL,
+        "SUPABASE_KEY": settings.SUPABASE_KEY,
+        "PAYSTACK_SECRET_KEY": settings.PAYSTACK_SECRET_KEY,
+        "TELEGRAM_BOT_TOKEN": settings.TELEGRAM_BOT_TOKEN,
+        "WHATSAPP_ACCESS_TOKEN": settings.WHATSAPP_ACCESS_TOKEN,
+        "WHATSAPP_APP_SECRET": settings.WHATSAPP_APP_SECRET,
+        "DATAMART_API_KEY": settings.DATAMART_API_KEY,
+    }
+    
+    missing = [name for name, value in required_settings.items() if not value]
+    if missing:
+        error_msg = (
+            f"Missing required environment variables: {', '.join(missing)}\n"
+            f"Please check your .env file and ensure all required variables are set."
+        )
+        logger.error(error_msg)
+        raise RuntimeError(error_msg)
+    
+    logger.info("✅ Environment validation passed")
+    
     # Startup logic
     logger.info("Running initial bundle sync...")
     await sync_bundles_job()
@@ -50,11 +77,13 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Data Bundle Purchase System(Intejers)",
-    description="API for purchasing mobile data bundles via Telegram bot",
-    version="1.0.0",
+    title="Intejers Data Hub API",
     lifespan=lifespan
 )
+
+# Configure rate limiting
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS middleware
 app.add_middleware(

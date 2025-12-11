@@ -95,7 +95,8 @@ async def start_handler(phone_number: str, bot, referral_code: str = None) -> No
             try:
                 error_detail = e.response.json()
                 logger.error(f"Response body: {error_detail}")
-            except:
+            except Exception as json_error:
+                logger.warning(f"Failed to parse error response JSON: {json_error}")
                 logger.error(f"Response text: {e.response.text}")
             
             await notifier.send_text_message(

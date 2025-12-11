@@ -1,5 +1,8 @@
 import httpx
+import logging
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class NotifierService:
@@ -32,7 +35,7 @@ class NotifierService:
                 response.raise_for_status()
                 return True
         except Exception as e:
-            print(f"Failed to send message to user {telegram_id}: {str(e)}")
+            logger.error(f"Failed to send message to user {telegram_id}: {str(e)}")
             return False
 
     @staticmethod
@@ -49,7 +52,7 @@ class NotifierService:
         admin_ids = settings.admin_ids_list
         
         if not admin_ids:
-            print("No admin IDs configured")
+            logger.warning("No admin IDs configured")
             return False
         
         success = False

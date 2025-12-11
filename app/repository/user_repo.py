@@ -12,17 +12,24 @@ class UserRepository(BaseRepository):
     def __init__(self):
         super().__init__("base_users")
     
-    async def get_by_telegram_id(self, telegram_id: str) -> Optional[Dict[str, Any]]:
+    async def get_by_telegram_id(self, telegram_id: str):
         """
-        Get user by Telegram ID.
+        ⚠️ DEPRECATED: Use UserService.get_user_by_telegram_id() instead.
         
-        Args:
-            telegram_id: The Telegram user ID
-            
-        Returns:
-            User record if found, None otherwise
+        This method queries telegram_users table correctly but returns incomplete data.
+        For full user data with platform information, use UserService methods.
+        
+        Get user by Telegram ID from telegram_users table.
         """
-        return await self.get_by_field("telegram_id", telegram_id)
+        telegram_user_repo = TelegramUserRepository()
+        telegram_user = await telegram_user_repo.get_by_telegram_id(telegram_id)
+        
+        if not telegram_user:
+            return None
+        
+        # Get base user data
+        base_user = await self.get_by_id(telegram_user["user_id"])
+        return base_user
     
     async def get_by_phone_number(self, phone_number: str) -> Optional[Dict[str, Any]]:
         """
