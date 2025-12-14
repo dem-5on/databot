@@ -1,6 +1,21 @@
-version: '3.8'
+version: "3.8"
 
 services:
+  # Redis - Message broker for Celery
+  redis:
+    image: redis:7-alpine
+    container_name: databot_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # FastAPI Backend
   backend:
     build:
       context: .
@@ -11,14 +26,59 @@ services:
     env_file:
       - .env
     environment:
-      # Supabase REST API credentials (required)
       - SUPABASE_URL=${SUPABASE_URL}
       - SUPABASE_KEY=${SUPABASE_KEY}
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - UVICORN_WORKERS=${UVICORN_WORKERS:-4}
     volumes:
       - .:/app
     command: ./app/entrypoint.sh
+    depends_on:
+      redis:
+        condition: service_healthy
 
+  # Celery Worker - Processes background tasks
+  celery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: databot_celery_worker
+    env_file:
+      - .env
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - .:/app
+    command: celery -A app.celery_app worker --loglevel=info
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # Celery Beat - Scheduled tasks (only 1 instance!)
+  celery-beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: databot_celery_beat
+    env_file:
+      - .env
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - .:/app
+    command: celery -A app.celery_app beat --loglevel=info
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  redis_data:
 # Note: PostgreSQL service removed - using Supabase managed database
 # Database migrations are handled via Supabase Dashboard SQL Editor
-# See SUPABASE_MIGRATION_GUIDE.md for details
-

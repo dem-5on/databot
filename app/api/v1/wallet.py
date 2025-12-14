@@ -30,7 +30,7 @@ class DepositConfirmRequest(BaseModel):
 
 @router.post("/deposit/init")
 @limiter.limit("5/minute")
-async def init_deposit(request: DepositInitRequest, http_request: Request):
+async def init_deposit(request: Request, deposit_data: DepositInitRequest):
     """
     Initialize a deposit transaction and create Paystack charge.
     """
@@ -40,16 +40,16 @@ async def init_deposit(request: DepositInitRequest, http_request: Request):
     transaction_repo = TransactionRepository()
     
     # Get user - either by user_id (WhatsApp) or telegram_id (Telegram)
-    if request.user_id:
+    if deposit_data.user_id:
         # WhatsApp: user_id provided directly
         from app.repository.base_user_repo import BaseUserRepository
         base_user_repo = BaseUserRepository()
-        user = await base_user_repo.get_by_id(request.user_id)
+        user = await base_user_repo.get_by_id(deposit_data.user_id)
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
-    elif request.telegram_id:
+    elif deposit_data.telegram_id:
         # Telegram: use UserService for proper multi-table lookup
-        user, _ = await user_service.get_or_create_telegram_user(request.telegram_id)
+        user, _ = await user_service.get_or_create_telegram_user(deposit_data.telegram_id)
     else:
         raise HTTPException(status_code=400, detail="Either telegram_id or user_id must be provided")
     
@@ -60,26 +60,26 @@ async def init_deposit(request: DepositInitRequest, http_request: Request):
     transaction = await transaction_repo.create_transaction(
         user_id=user["id"],
         transaction_type=TransactionType.DEPOSIT.value,
-        amount=request.amount,
+        amount=deposit_data.amount,
         currency="GHS",
         reference=reference,
         status=TransactionStatus.PENDING.value,
-        phone=request.phone,
-        provider=request.provider
+        phone=deposit_data.phone,
+        provider=deposit_data.provider
     )
     
     # Create Paystack charge
     paystack_service = PaystackService()
     try:
         # Use this email if user doesn't have one
-        user_identifier = request.telegram_id or request.user_id or user["id"]
+        user_identifier = deposit_data.telegram_id or deposit_data.user_id or user["id"]
         email = f"user_{user_identifier}@integers.com"
         
         paystack_response = await paystack_service.create_mobile_money_charge(
             email=email,
-            amount_ghs=request.amount,
-            phone=request.phone,
-            provider=request.provider
+            amount_ghs=deposit_data.amount,
+            phone=deposit_data.phone,
+            provider=deposit_data.provider
         )
         
         # Store Paystack response in transaction

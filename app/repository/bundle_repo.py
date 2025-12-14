@@ -1,10 +1,47 @@
 import logging
+import time
 from uuid import uuid4
 from decimal import Decimal
 from typing import Optional, List, Dict, Any
 from app.repository.base import BaseRepository
 
 logger = logging.getLogger(__name__)
+
+# Simple TTL cache for bundle queries
+class BundleCache:
+    """Time-based cache for bundle data to reduce database queries."""
+    
+    def __init__(self, ttl_seconds: int = 300):  # 5 minute default TTL
+        self._cache: Dict[str, tuple] = {}  # key -> (data, expiry_time)
+        self.ttl = ttl_seconds
+    
+    def get(self, key: str) -> Optional[Any]:
+        """Get cached value if not expired."""
+        if key in self._cache:
+            data, expiry = self._cache[key]
+            if time.time() < expiry:
+                logger.debug(f"Cache hit for: {key}")
+                return data
+            else:
+                del self._cache[key]
+                logger.debug(f"Cache expired for: {key}")
+        return None
+    
+    def set(self, key: str, value: Any):
+        """Store value with TTL."""
+        self._cache[key] = (value, time.time() + self.ttl)
+        logger.debug(f"Cached: {key}")
+    
+    def invalidate(self, key: str = None):
+        """Invalidate specific key or entire cache."""
+        if key:
+            self._cache.pop(key, None)
+        else:
+            self._cache.clear()
+            logger.info("Bundle cache cleared")
+
+# Module-level cache instance
+_bundle_cache = BundleCache(ttl_seconds=300)  # 5 minutes
 
 
 class BundleRepository(BaseRepository):
@@ -18,13 +55,20 @@ class BundleRepository(BaseRepository):
         network: str, 
         active_only: bool = True
     ) -> List[Dict[str, Any]]:
-        """Get bundles by network."""
+        """Get bundles by network (cached for 5 minutes)."""
+        cache_key = f"network:{network}:active:{active_only}"
+        cached = _bundle_cache.get(cache_key)
+        if cached is not None:
+            return cached
+        
         try:
             query = self.client.table(self.table_name).select("*").eq("network", network)
             if active_only:
                 query = query.eq("active", True)
             response = await query.execute()
-            return response.data if response.data else []
+            result = response.data if response.data else []
+            _bundle_cache.set(cache_key, result)
+            return result
         except Exception as e:
             logger.error(f"Error fetching bundles for network {network}: {str(e)}")
             return []
@@ -33,13 +77,20 @@ class BundleRepository(BaseRepository):
         self, 
         network: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        """Get active bundles, optionally filtered by network."""
+        """Get active bundles, optionally filtered by network (cached for 5 minutes)."""
+        cache_key = f"active_bundles:network:{network or 'all'}"
+        cached = _bundle_cache.get(cache_key)
+        if cached is not None:
+            return cached
+        
         try:
             query = self.client.table(self.table_name).select("*").eq("active", True)
             if network:
                 query = query.eq("network", network)
             response = await query.order("price", desc=False).execute()
-            return response.data if response.data else []
+            result = response.data if response.data else []
+            _bundle_cache.set(cache_key, result)
+            return result
         except Exception as e:
             logger.error(f"Error fetching active bundles: {str(e)}")
             return []
@@ -108,14 +159,20 @@ class BundleRepository(BaseRepository):
                     logger.warning(f"Bundle {bundle_id} no longer exists, creating new one")
                     # If bundle was deleted, create a new one
                     bundle_data["id"] = str(uuid4())
-                    return await self.create(bundle_data)
+                    result = await self.create(bundle_data)
+                    _bundle_cache.invalidate()  # Clear cache after create
+                    return result
                 
-                return await self.update(bundle_id, bundle_data)
+                result = await self.update(bundle_id, bundle_data)
+                _bundle_cache.invalidate()  # Clear cache after update
+                return result
             else:
                 # Create new bundle
                 bundle_data["id"] = str(uuid4())
                 logger.info(f"Creating new bundle for {network} - {capacity}")
-                return await self.create(bundle_data)
+                result = await self.create(bundle_data)
+                _bundle_cache.invalidate()  # Clear cache after create
+                return result
                 
         except Exception as e:
             logger.error(f"Error upserting bundle {network} - {capacity}: {str(e)}")

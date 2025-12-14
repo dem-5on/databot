@@ -1,6 +1,5 @@
 import logging
 import uvicorn
-
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from app.api.v1.sync import router as sync_bundles
@@ -11,12 +10,15 @@ from app.api.v1.orders import router as orders_router
 from app.api.v1.bundles import router as bundles_router
 from app.api.v1.admin.tasks import router as admin_router
 from app.api.v1.referrals import router as referrals_router
+from app.services.whatsapp_notifier import WhatsAppNotifierService
+from app.services.datamart_client import DatamartClient
+from app.utils.backend_client import BackendAPIClient
 from app.api.v1.webhooks.paystack import router as paystack_webhook_router
 from app.api.v1.webhooks.whatsapp import router as whatsapp_webhook_router
-from app.services.scheduler import start_scheduler, stop_scheduler, sync_bundles_job
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from app.core.rate_limit import limiter
+from app.core.config import settings
 
 
 logging.basicConfig(level=logging.INFO)
@@ -30,7 +32,6 @@ async def lifespan(app: FastAPI):
     Handles startup and shutdown events.
     """
     # Validate critical environment variables on startup
-    from app.core.config import settings
     
     required_settings = {
         "SUPABASE_URL": settings.SUPABASE_URL,
@@ -53,23 +54,17 @@ async def lifespan(app: FastAPI):
     
     logger.info("✅ Environment validation passed")
     
-    # Startup logic
-    logger.info("Running initial bundle sync...")
-    await sync_bundles_job()
-    
-    # Start scheduler for daily syncs
-    start_scheduler()
+    # Note: Bundle syncs are handled by Celery Beat (scheduled tasks)
+    # To trigger a manual sync: from app.tasks import sync_bundles_task; sync_bundles_task.delay()
     
     yield
     
     # Shutdown logic
-    stop_scheduler()
     
     # Clean up shared HTTP clients
     try:
-        from app.services.whatsapp_notifier import WhatsAppNotifierService
-        from app.utils.backend_client import BackendAPIClient
         await WhatsAppNotifierService.close_client()
+        await DatamartClient.close_client()
         await BackendAPIClient.close_client()
         logger.info("Closed shared HTTP clients")
     except Exception as e:
@@ -85,10 +80,11 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+allowed_origins = settings.ALLOWED_ORIGINS
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify actual origins
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -119,4 +115,13 @@ async def root():
 
 
 if __name__ == "__main__":
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+    # Use multiple workers for production (handles 500+ users)
+    # Set workers=1 for development/debugging
+    workers = settings.UVICORN_WORKERS
+    uvicorn.run(
+        "app.main:app", 
+        host="0.0.0.0", 
+        port=8000, 
+        workers=workers,
+        reload=workers == 1  # Only enable reload in single-worker mode
+    )

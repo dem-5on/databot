@@ -11,3 +11,5 @@ apscheduler
 supabase
 slowapi
 sqlalchemy>=1.4
+celery[redis]
+redis

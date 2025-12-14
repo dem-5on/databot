@@ -7,7 +7,7 @@ from app.services.datamart_client import DatamartClient
 class BundleSyncService:
     """Service for syncing bundles from DatamartGH to database using Supabase."""
 
-    # Markup percentage to add to all bundle prices (e.g., 10 = 10%)
+    # Markup percentage to add to all bundle prices
     PRICE_MARKUP_PERCENTAGE = Decimal(str(settings.PRICE_MARKUP_PERCENTAGE))
 
     def __init__(self):
