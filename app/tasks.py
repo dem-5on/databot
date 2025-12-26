@@ -1,4 +1,3 @@
-"""Celery tasks for background processing."""
 import asyncio
 import logging
 from app.celery_app import celery_app
@@ -20,19 +19,13 @@ def run_async(coro):
 @celery_app.task(bind=True, name="app.tasks.sync_bundles_task")
 def sync_bundles_task(self):
     """
-    Celery task to sync bundles from DatamartGH.
+    Celery task for bundle sync (DEPRECATED for Blessdatahub).
     
-    This runs as a scheduled task via Celery Beat (daily at midnight)
-    or can be triggered manually.
+    Blessdatahub uses static pricing. Bundles are seeded via SQL script.
+    This task now skips the sync and returns a warning.
     """
-    logger.info("🔄 Starting Celery bundle sync task...")
-    
-    sync_service = BundleSyncService()
-    try:
-        count = run_async(sync_service.sync_bundles_to_db())
-        logger.info(f"✅ Celery sync completed: {count} bundles synced")
-        return {"status": "success", "bundles_synced": count}
-    except Exception as e:
-        logger.error(f"❌ Celery sync failed: {str(e)}")
-        # Retry on failure (max 3 retries with exponential backoff)
-        raise self.retry(exc=e, countdown=60, max_retries=3)
+    logger.info("⚠️ Bundle sync task called - skipping (Blessdatahub uses static pricing)")
+    return {
+        "status": "skipped", 
+        "message": "Blessdatahub uses static bundle prices. Use seed_bundles.sql to populate bundles."
+    }

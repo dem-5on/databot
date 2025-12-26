@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Dict, List, Tuple, Optional
 
 # CONFIGURATION - Update these with your actual values
-API_TOKEN = "tok_047a6dbfdbb7f0086083e46ed01d8ea708bad64ae19f104967528536ef8b46b8"  
+API_TOKEN = "tok_d9b2d63df476931504f54c65cafe112a747bd35c5f659c93583c11532dbd2f7a"  
 BASE_URL = "https://datapacks.shop/api.php"
 TEST_PHONE = "0538636317"  
 
@@ -315,7 +315,7 @@ async def run_all_tests(execute_live_orders: bool = False,
         print("   Set execute_live_orders=True to make real API calls")
     else:
         print("\n🔴 LIVE MODE: Orders will be executed and charged!")
-        await asyncio.sleep(3)  # Give time to cancel
+        await asyncio.sleep(3)
     
     tester = DataPacksAPITester(API_TOKEN, BASE_URL)
     
@@ -381,18 +381,8 @@ async def run_all_tests(execute_live_orders: bool = False,
         await tester.test_duplicate_idempotency()  # Will show as skipped
     
     # Print summary
-    tester.print_summary()
+    # tester.print_summary()
     
-    print("\n" + "💡" * 35)
-    print("NEXT STEPS:")
-    print("=" * 70)
-    print("1. Review the test results above")
-    print("2. If all auth tests pass, you can test live orders:")
-    print("   - Set execute_live_orders=True")
-    print("3. Test status endpoint with a real order reference:")
-    print("   - Set test_order_ref='API-1000XXX'")
-    print("4. Check your webhook configuration if using webhooks")
-    print("=" * 70)
 
 if __name__ == "__main__":
     print("\n⚠️  CONFIGURATION CHECKLIST:")
@@ -413,5 +403,5 @@ if __name__ == "__main__":
     asyncio.run(run_all_tests(
         execute_live_orders=True,  # Set to True to make real orders
         execute_idempotency_test=True,  # Set to True to test idempotency
-        test_order_ref=None  # Set to "API-1000XXX" to test status endpoint
+        test_order_ref="API-1000XXX"  # Set to "API-1000XXX" to test status endpoint
     ))

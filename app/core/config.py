@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     DATAMART_API_URL: str = "https://api.datamartgh.shop/api/developer"
     DATAMART_API_KEY: str
 
+    # Blessdatahub
+    BLESSDATAHUB_API_URL: str = "https://www.blessdatahub.com/api"
+    BLESSDATAHUB_API_KEY: str
+    BLESSDATAHUB_API_SECRET: str
+    BLESSDATAHUB_PURCHASE_TIMEOUT: int
+
     # Backend API
     BACKEND_API_URL: str = "http://localhost:8000"
 

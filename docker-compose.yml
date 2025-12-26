@@ -5,8 +5,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: databot_redis
-    ports:
-      - "6379:6379"
+    # Port not exposed externally - only needed for internal Docker communication
     volumes:
       - redis_data:/data
     healthcheck:

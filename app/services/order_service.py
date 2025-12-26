@@ -2,7 +2,7 @@ from app.services.notifier import NotifierService
 from app.repository.order_repo import OrderRepository
 from app.services.wallet_service import WalletService
 from app.repository.bundle_repo import BundleRepository
-from app.services.datamart_client import DatamartClient
+from app.services.blessdatahub_client import BlessdatahubClient
 from app.services.referral_service import ReferralService
 from app.repository.transaction_repo import TransactionRepository
 from app.core.constants import TransactionType, TransactionStatus, OrderStatus
@@ -12,7 +12,7 @@ class OrderService:
     """Service for order operations using Supabase."""
 
     def __init__(self):
-        self.datamart_client = DatamartClient()
+        self.blessdatahub_client = BlessdatahubClient()
         self.bundle_repo = BundleRepository()
         self.order_repo = OrderRepository()
         self.transaction_repo = TransactionRepository()
@@ -79,15 +79,17 @@ class OrderService:
             
             # Purchase bundle from DatamartGH
             try:
-                vendor_response = await self.datamart_client.purchase_bundle(
+                vendor_response = await self.blessdatahub_client.purchase_bundle(
                     phone_number=phone,
                     network=bundle["network"],
-                    capacity=bundle["capacity"],
+                    package_size=f"{bundle['capacity']}GB",
                     ref=order["id"]
                 )
                 
                 # Success - update order and transaction
-                vendor_ref = vendor_response.get("transactionReference", "")
+                # Blessdatahub returns order_ids array
+                order_ids = vendor_response.get("order_ids", [])
+                vendor_ref = str(order_ids[0]) if order_ids else ""
                 self.order_repo.update_order_status(
                     order["id"],
                     OrderStatus.SUCCESS.value,

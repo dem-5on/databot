@@ -1,24 +1,24 @@
 import logging
 import uvicorn
+from fastapi import FastAPI
+from app.core.config import settings
+from app.core.rate_limit import limiter
+from slowapi.errors import RateLimitExceeded
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
+from slowapi import _rate_limit_exceeded_handler
 from app.api.v1.sync import router as sync_bundles
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.users import router as users_router
+from app.utils.backend_client import BackendAPIClient
 from app.api.v1.wallet import router as wallet_router
 from app.api.v1.orders import router as orders_router
 from app.api.v1.bundles import router as bundles_router
 from app.api.v1.admin.tasks import router as admin_router
 from app.api.v1.referrals import router as referrals_router
 from app.services.whatsapp_notifier import WhatsAppNotifierService
-from app.services.datamart_client import DatamartClient
-from app.utils.backend_client import BackendAPIClient
+from app.services.blessdatahub_client import BlessdatahubClient
 from app.api.v1.webhooks.paystack import router as paystack_webhook_router
 from app.api.v1.webhooks.whatsapp import router as whatsapp_webhook_router
-from slowapi import _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
-from app.core.rate_limit import limiter
-from app.core.config import settings
 
 
 logging.basicConfig(level=logging.INFO)
@@ -40,7 +40,7 @@ async def lifespan(app: FastAPI):
         "TELEGRAM_BOT_TOKEN": settings.TELEGRAM_BOT_TOKEN,
         "WHATSAPP_ACCESS_TOKEN": settings.WHATSAPP_ACCESS_TOKEN,
         "WHATSAPP_APP_SECRET": settings.WHATSAPP_APP_SECRET,
-        "DATAMART_API_KEY": settings.DATAMART_API_KEY,
+        "BLESSDATAHUB_API_KEY": settings.BLESSDATAHUB_API_KEY,
     }
     
     missing = [name for name, value in required_settings.items() if not value]
@@ -64,7 +64,7 @@ async def lifespan(app: FastAPI):
     # Clean up shared HTTP clients
     try:
         await WhatsAppNotifierService.close_client()
-        await DatamartClient.close_client()
+        await BlessdatahubClient.close_client()
         await BackendAPIClient.close_client()
         logger.info("Closed shared HTTP clients")
     except Exception as e:

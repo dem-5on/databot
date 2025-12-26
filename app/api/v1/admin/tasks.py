@@ -1,7 +1,7 @@
 from fastapi import APIRouter, BackgroundTasks
 from app.services.bundle_sync import BundleSyncService
-from app.services.datamart_client import DatamartClient
 from app.services.paystack_service import PaystackService
+from app.services.blessdatahub_client import BlessdatahubClient
 
 router = APIRouter()
 
@@ -12,43 +12,40 @@ async def sync_bundles(
     networks: list[str] = None
 ):
     """
-    Trigger bundle synchronization from DatamartGH.
+    Trigger bundle synchronization.
     
-    Args:
-        networks: Optional list of networks to sync (MTN, VODAFONE, AIRTELTIGO)
-                 If None, syncs all networks.
+    NOTE: This endpoint is DEPRECATED for Blessdatahub.
+    Blessdatahub uses static pricing - use seed_bundles.sql to populate bundles.
     """
     sync_service = BundleSyncService()
     
-    # Run sync in background
+    # Run sync in background (will log deprecation warning)
     background_tasks.add_task(
         sync_service.sync_bundles_to_db,
         networks
     )
     
     return {
-        "status": "success",
-        "message": "Bundle sync started in background"
+        "status": "warning",
+        "message": "Bundle sync is deprecated for Blessdatahub. Use seed_bundles.sql instead."
     }
 
 
-@router.get("/health/datamart")
-async def check_datamart_health():
-    """Check DatamartGH API health."""
-    
-    client = DatamartClient()
+@router.get("/health/blessdatahub")
+async def check_blessdatahub_health():
+    """Check Blessdatahub API configuration."""
     try:
-        # Try to fetch bundles for one network as health check
-        bundles = await client.fetch_bundles("MTN")
+        client = BlessdatahubClient()
         return {
-            "status": "healthy",
-            "message": "DatamartGH API is accessible",
-            "bundles_count": len(bundles) if bundles else 0
+            "status": "configured",
+            "message": "Blessdatahub client is properly configured",
+            "api_url": client.base_url,
+            "note": "Blessdatahub does not have a dedicated health endpoint"
         }
     except Exception as e:
         return {
-            "status": "unhealthy",
-            "message": f"DatamartGH API error: {str(e)}"
+            "status": "error",
+            "message": f"Blessdatahub configuration error: {str(e)}"
         }
 
 
