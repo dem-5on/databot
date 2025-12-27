@@ -38,8 +38,10 @@ async def help_handler(phone_number: str, bot) -> None:
             "• No refunds will be issued for wrong transactions or incorrect phone numbers.\n\n"
             "• Please verify your phone number carefully before making a purchase.\n\n"
             "❓ Need more help?\n"
-            "Contact the admin for assistance."
-            "Admin: @admin_username"
+            "Contact the admin/support for assistance.\n"
+            "WhatsApp: https://wa.me/message/M34LEOVGZGOZP1\n"
+            "Telegram: https://t.me/intejsupport\n"
+            "Phone: +233559457645"
         )
         
         await bot.send_main_menu(normalized_phone, help_text)

@@ -191,10 +191,10 @@ async def handle_bundle(phone_number: str, bundle_id: str, bot) -> None:
             (
                 f"📱 Bundle Selected\n\n"
                 f"Network: {NETWORK_DISPLAY.get(selected_network, selected_network)}\n"
-                f"Capacity: {selected_bundle['capacity']}\n"
+                f"Capacity: {selected_bundle['capacity']}GB\n"
                 f"Price: GHS {selected_bundle['price']}\n\n"
                 f"‼️‼️‼️‼️‼️‼️‼️‼️‼️‼️‼️‼️\n"
-                f" Wrong phone number will not be refunded\n\n"
+                f"Bundle sent to wrong phone number will not be refunded\n\n"
                 f"Please enter the phone number to receive the bundle:\n"
             ),
             get_back_cancel_buttons()
@@ -305,6 +305,8 @@ async def handle_phone(phone_number: str, phone_input: str, bot) -> None:
                     (
                         f"❌ Insufficient balance.\n\n"
                         f"Account balance is GHS {balance}, Required GHS {bundle_price} to buy {selected_bundle['capacity']}GB bundle."
+                        f"\n\n"
+                        f"Please use the deposit button to top up your account to continue."
                     )
                 )
                 # Clear state to allow user to start fresh

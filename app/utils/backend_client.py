@@ -1,7 +1,6 @@
 import httpx
 from app.core.config import settings
 
-
 class BackendAPIClient:
     """Shared HTTP client for backend API requests with connection pooling."""
     

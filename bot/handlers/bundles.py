@@ -4,6 +4,7 @@ from telegram import Update
 from app.core.config import settings
 from telegram.ext import ContextTypes, ConversationHandler
 from app.utils.backend_client import BackendAPIClient
+from app.utils.phone_utils import validate_phone_number
 from bot.keyboard import get_network_keyboard, get_bundles_keyboard, get_phone_input_keyboard
 
 logging.basicConfig(level=logging.INFO)
@@ -68,27 +69,7 @@ def detect_network(phone: str) -> str | None:
     return None
 
 
-def validate_phone_number(phone: str) -> tuple[bool, str]:
-    """
-    Validate phone number format.
-    
-    Args:
-        phone: Phone number to validate
-        
-    Returns:
-        Tuple of (is_valid, error_message)
-    """
-    phone = phone.strip().replace(" ", "").replace("-", "")
-    
-    # Check if it's 10 digits starting with 0
-    if phone.startswith("0") and len(phone) == 10 and phone.isdigit():
-        return True, ""
-    
-    # Check if it's 12 digits starting with 233
-    if phone.startswith("233") and len(phone) == 12 and phone.isdigit():
-        return True, ""
-    
-    return False, "Invalid format. Use 0XXXXXXXXX or 233XXXXXXXXX"
+
 
 
 async def bundles_start(update: Update, context: ContextTypes.DEFAULT_TYPE):

@@ -19,7 +19,6 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• AirtelTigo\n\n"
         "💰 Payment Methods:\n"
         "• Mobile Money (MTN, Telecel, AirtelTigo)\n\n"
-        "❓ Need more help?\n\n"
         " ⚠️ IMPORTANT NOTICE:\n"
 
         "Turbonet and Broadband Sim Cards are not eligible for this offer."
@@ -31,8 +30,11 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• No refunds will be issued for wrong transactions or incorrect phone numbers."
 
         "• Please verify your phone number carefully before making a purchase.\n\n"
-        "Contact the admin for assistance.\n"
-        "Admin: @dae50n"
+        "❓ Need more help?\n"
+        "Contact the admin/support for assistance.\n"
+        "WhatsApp: https://wa.me/message/M34LEOVGZGOZP1\n"
+        "Telegram: https://t.me/intejsupport\n"
+        "Phone: +233559457645"
     )
     
     await update.message.reply_text(help_text)

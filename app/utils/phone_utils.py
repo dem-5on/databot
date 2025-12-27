@@ -17,7 +17,7 @@ def normalize_phone_number(phone: str, country_code: str = "233") -> str:
     # Remove leading zeros
     phone = phone.lstrip("0")
     
-    # If starts with country code, use it as is
+    # If starts with country code, use it as it is 
     if phone.startswith(country_code):
         return phone
     
@@ -37,19 +37,37 @@ def validate_phone_number(phone: str) -> tuple[bool, str]:
     """
     phone = phone.strip().replace(" ", "").replace("-", "").replace("+", "")
     
-    # Check if it's 10 digits starting with 0 (Ghana local format)
-    if phone.startswith("0") and len(phone) == 10 and phone.isdigit():
-        return True, ""
+    # Check if all characters are digits
+    if not phone.isdigit():
+        return False, "Phone number must contain only digits."
     
-    # Check if it's 12 digits starting with 233 (Ghana international format)
-    if phone.startswith("233") and len(phone) == 12 and phone.isdigit():
-        return True, ""
+    # Check based on the format the user is using
+    if phone.startswith("233"):
+        # User is using international format (233XXXXXXXXX)
+        if len(phone) == 12:
+            return True, ""
+        elif len(phone) > 12:
+            return False, f"Phone number is more than 12 digits ({len(phone)}). For 233 format, use exactly 12 digits (e.g., 233241234567)."
+        else:
+            return False, f"Phone number is less than 12 digits ({len(phone)}). For 233 format, use exactly 12 digits (e.g., 233241234567)."
     
-    # Check if it's 9 digits (without leading zero or country code)
-    if len(phone) == 9 and phone.isdigit():
-        return True, ""
+    elif phone.startswith("0"):
+        # User is using local format (0XXXXXXXXX)
+        if len(phone) == 10:
+            return True, ""
+        elif len(phone) > 10:
+            return False, f"Phone number is more than 10 digits ({len(phone)}). For local format, use exactly 10 digits (e.g., 0241234567)."
+        else:
+            return False, f"Phone number is less than 10 digits ({len(phone)}). For local format, use exactly 10 digits (e.g., 0241234567)."
     
-    return False, "Invalid format. Use 0XXXXXXXXX, 233XXXXXXXXX, or +233XXXXXXXXX"
+    else:
+        # User entered digits without prefix (assume they meant local format without leading 0)
+        if len(phone) == 9:
+            return True, ""
+        elif len(phone) > 9:
+            return False, f"Phone number is more than 9 digits ({len(phone)}). Please use format: 0XXXXXXXXX or 233XXXXXXXXX."
+        else:
+            return False, f"Phone number is less than 9 digits ({len(phone)}). Please use format: 0XXXXXXXXX or 233XXXXXXXXX."
 
 
 def detect_network(phone: str) -> str | None:
