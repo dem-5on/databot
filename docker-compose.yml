@@ -30,6 +30,10 @@ services:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - UVICORN_WORKERS=${UVICORN_WORKERS:-4}
+      # Telegram Webhook (Production)
+      - TELEGRAM_USE_WEBHOOK=${TELEGRAM_USE_WEBHOOK:-true}
+      - TELEGRAM_WEBHOOK_URL=${TELEGRAM_WEBHOOK_URL}
+      - TELEGRAM_WEBHOOK_SECRET=${TELEGRAM_WEBHOOK_SECRET}
     volumes:
       - .:/app
     command: ./app/entrypoint.sh

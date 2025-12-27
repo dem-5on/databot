@@ -1,10 +1,10 @@
 -- ============================================================
--- BLESSDATAHUB BUNDLE SEEDING SCRIPT
+-- BLESSDATAHUB BUNDLE SEEDING SCRIPT (IDEMPOTENT)
 -- Run this in your Supabase SQL Editor
 -- ============================================================
 -- 
 -- This script populates the bundles table with static pricing
--- from Blessdatahub. Run this after migrating from DatamartClient.
+-- from Blessdatahub. Safe to run multiple times (uses UPSERT).
 --
 -- Networks supported:
 --   - MTN (16 packages: 1GB - 50GB)
@@ -12,9 +12,6 @@
 --   - AIRTELTIGO (17 packages: 1GB - 100GB)
 -- ============================================================
 
--- Step 1: Deactivate all existing bundles (soft delete)
--- This preserves historical data while marking old bundles as inactive
-UPDATE bundles SET active = false WHERE active = true;
 
 -- ============================================================
 -- MTN BUNDLES
@@ -36,7 +33,13 @@ VALUES
     (gen_random_uuid(), 'MTN', '25', '25600', 102.00, 'GHS', true),
     (gen_random_uuid(), 'MTN', '30', '30720', 117.50, 'GHS', true),
     (gen_random_uuid(), 'MTN', '40', '40960', 160.00, 'GHS', true),
-    (gen_random_uuid(), 'MTN', '50', '51200', 198.00, 'GHS', true);
+    (gen_random_uuid(), 'MTN', '50', '51200', 198.00, 'GHS', true)
+ON CONFLICT (network, capacity) DO UPDATE SET
+    mb = EXCLUDED.mb,
+    price = EXCLUDED.price,
+    currency = EXCLUDED.currency,
+    active = EXCLUDED.active,
+    updated_at = NOW();
 
 -- ============================================================
 -- TELECEL BUNDLES (formerly Vodafone)
@@ -50,7 +53,13 @@ VALUES
     (gen_random_uuid(), 'TELECEL', '25', '25600', 94.00, 'GHS', true),
     (gen_random_uuid(), 'TELECEL', '30', '30720', 112.00, 'GHS', true),
     (gen_random_uuid(), 'TELECEL', '40', '40960', 146.00, 'GHS', true),
-    (gen_random_uuid(), 'TELECEL', '50', '51200', 182.00, 'GHS', true);
+    (gen_random_uuid(), 'TELECEL', '50', '51200', 182.00, 'GHS', true)
+ON CONFLICT (network, capacity) DO UPDATE SET
+    mb = EXCLUDED.mb,
+    price = EXCLUDED.price,
+    currency = EXCLUDED.currency,
+    active = EXCLUDED.active,
+    updated_at = NOW();
 
 -- ============================================================
 -- AIRTELTIGO BUNDLES
@@ -73,7 +82,14 @@ VALUES
     (gen_random_uuid(), 'AIRTELTIGO', '30', '30720', 125.00, 'GHS', true),
     (gen_random_uuid(), 'AIRTELTIGO', '40', '40960', 160.00, 'GHS', true),
     (gen_random_uuid(), 'AIRTELTIGO', '50', '51200', 200.00, 'GHS', true),
-    (gen_random_uuid(), 'AIRTELTIGO', '100', '102400', 220.00, 'GHS', true);
+    (gen_random_uuid(), 'AIRTELTIGO', '100', '102400', 220.00, 'GHS', true)
+ON CONFLICT (network, capacity) DO UPDATE SET
+    mb = EXCLUDED.mb,
+    price = EXCLUDED.price,
+    currency = EXCLUDED.currency,
+    active = EXCLUDED.active,
+    updated_at = NOW();
+
 
 -- ============================================================
 -- VERIFICATION QUERY

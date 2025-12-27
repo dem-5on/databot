@@ -17,7 +17,7 @@ def get_network_keyboard() -> InlineKeyboardMarkup:
     keyboard = [
         [
             InlineKeyboardButton("MTN", callback_data="network:MTN"),
-            InlineKeyboardButton("TELECEL", callback_data="network:VODAFONE")
+            InlineKeyboardButton("TELECEL", callback_data="network:TELECEL")
         ],
         [
             InlineKeyboardButton("AIRTELTIGO", callback_data="network:AIRTELTIGO")
@@ -67,7 +67,7 @@ def get_provider_keyboard() -> InlineKeyboardMarkup:
     keyboard = [
         [
             InlineKeyboardButton("MTN", callback_data="provider:MTN"),
-            InlineKeyboardButton("TELECEL", callback_data="provider:VODAFONE")
+            InlineKeyboardButton("TELECEL", callback_data="provider:TELECEL")
         ],
         [
             InlineKeyboardButton("AIRTELTIGO", callback_data="provider:AIRTELTIGO")

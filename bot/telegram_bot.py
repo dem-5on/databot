@@ -173,8 +173,22 @@ def setup_handlers(application: Application):
     application.add_handler(MessageHandler(filters.Regex("^❓ Help$"), help_handler))
 
 
-async def main():
-    """Main function to run the bot."""
+# Global application instance for webhook mode
+_application: Application = None
+
+
+def create_application() -> Application:
+    """
+    Create and configure the bot application.
+    
+    This is used for both webhook and polling modes.
+    Returns the configured Application instance.
+    """
+    global _application
+    
+    if _application is not None:
+        return _application
+    
     # Create application
     application = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).build()
     
@@ -184,8 +198,54 @@ async def main():
     # Add global error handler
     application.add_error_handler(error_handler)
     
+    _application = application
+    return application
+
+
+def get_application() -> Application:
+    """Get the bot application instance."""
+    return _application
+
+
+async def start_webhook_mode():
+    """
+    Initialize the bot for webhook mode.
+    
+    Called during FastAPI startup to prepare the bot for receiving webhook updates.
+    Does NOT start polling - updates come through the webhook endpoint.
+    """
+    application = create_application()
+    
+    # Initialize the application (required before processing updates)
+    await application.initialize()
+    
+    # Start the application (but not the updater - webhooks handle updates)
+    await application.start()
+    
+    logger.info("Telegram bot initialized for webhook mode")
+    return application
+
+
+async def stop_webhook_mode():
+    """
+    Clean up the bot when shutting down webhook mode.
+    """
+    global _application
+    
+    if _application is not None:
+        await _application.stop()
+        await _application.shutdown()
+        _application = None
+        logger.info("Telegram bot stopped")
+
+
+async def main():
+    """Main function to run the bot in polling mode (development)."""
+    # Create application
+    application = create_application()
+    
     # Start the bot
-    logger.info("Starting bot...")
+    logger.info("Starting bot in polling mode...")
     await application.initialize()
     await application.start()
     await application.updater.start_polling()
@@ -204,4 +264,5 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
 

@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 # Network display mapping
 NETWORK_DISPLAY = {
     "MTN": "MTN",
-    "VODAFONE": "Vodafone",
+    "TELECEL": "Telecel",
     "AIRTELTIGO": "AirtelTigo"
 }
 
@@ -119,7 +119,7 @@ async def handle_network(phone_number: str, network: str, bot) -> None:
                 # Also send back/cancel buttons
                 await notifier.send_interactive_message(
                     normalized_phone,
-                    "",
+                    "⬅️ Go back to select another network",
                     back_cancel
                 )
                 
@@ -193,9 +193,9 @@ async def handle_bundle(phone_number: str, bundle_id: str, bot) -> None:
                 f"Network: {NETWORK_DISPLAY.get(selected_network, selected_network)}\n"
                 f"Capacity: {selected_bundle['capacity']}\n"
                 f"Price: GHS {selected_bundle['price']}\n\n"
+                f"‼️‼️‼️‼️‼️‼️‼️‼️‼️‼️‼️‼️\n"
+                f" Wrong phone number will not be refunded\n\n"
                 f"Please enter the phone number to receive the bundle:\n"
-                f"Network: {NETWORK_DISPLAY.get(selected_network, selected_network)}\n"
-                f"Example: 0XXXXXXXXX or 233XXXXXXXXX"
             ),
             get_back_cancel_buttons()
         )

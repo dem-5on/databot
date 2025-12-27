@@ -2,7 +2,6 @@ import json
 import logging
 from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
 from app.repository.transaction_repo import TransactionRepository
-# UserRepository no longer used - using UserService instead
 from app.services.notifier import NotifierService
 from app.services.wallet_service import WalletService
 from app.services.paystack_service import PaystackService

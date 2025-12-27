@@ -1,6 +1,7 @@
 import logging
 from typing import Dict, Tuple, Optional, Any
 from app.utils.phone_utils import normalize_phone_number
+from app.utils.redis_state import get_state_manager
 from app.services.whatsapp_notifier import WhatsAppNotifierService
 from whatsapp.keyboard import get_main_menu_buttons, get_main_menu_buttons_extended
 import whatsapp.handlers.balance as balance
@@ -15,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class WhatsAppBot:
-    """WhatsApp bot with conversation state management."""
+    """WhatsApp bot with Redis-backed conversation state management."""
     
     # Conversation states
     STATE_NONE = "none"
@@ -28,9 +29,8 @@ class WhatsAppBot:
     
     def __init__(self):
         self.notifier = WhatsAppNotifierService()
-        # In-memory state storage (phone_number -> (state, data))
-        # In production, consider using Redis or database for state persistence
-        self.user_states: Dict[str, Tuple[str, Dict[str, Any]]] = {}
+        # Redis-backed state storage (supports multi-worker deployment)
+        self._state_manager = get_state_manager()
     
     def set_user_state(self, phone_number: str, state: str, data: Optional[Dict[str, Any]] = None):
         """
@@ -46,7 +46,7 @@ class WhatsAppBot:
             # Preserve existing data when only state is being changed
             _, existing_data = self.get_user_state(normalized_phone)
             data = existing_data
-        self.user_states[normalized_phone] = (state, data or {})
+        self._state_manager.set_state(normalized_phone, state, data or {})
         logger.debug(f"Set state for {normalized_phone}: {state}, data keys: {list((data or {}).keys())}")
     
     def get_user_state(self, phone_number: str) -> Tuple[str, Dict[str, Any]]:
@@ -60,7 +60,7 @@ class WhatsAppBot:
             Tuple of (state, data)
         """
         normalized_phone = normalize_phone_number(phone_number)
-        return self.user_states.get(normalized_phone, (self.STATE_NONE, {}))
+        return self._state_manager.get_state(normalized_phone)
     
     def clear_user_state(self, phone_number: str):
         """
@@ -70,9 +70,8 @@ class WhatsAppBot:
             phone_number: User's phone number
         """
         normalized_phone = normalize_phone_number(phone_number)
-        if normalized_phone in self.user_states:
-            del self.user_states[normalized_phone]
-            logger.debug(f"Cleared state for {normalized_phone}")
+        self._state_manager.clear_state(normalized_phone)
+        logger.debug(f"Cleared state for {normalized_phone}")
     
     def update_user_state_data(self, phone_number: str, **kwargs):
         """
@@ -83,9 +82,7 @@ class WhatsAppBot:
             **kwargs: Data to update
         """
         normalized_phone = normalize_phone_number(phone_number)
-        state, data = self.get_user_state(normalized_phone)
-        data.update(kwargs)
-        self.set_user_state(normalized_phone, state, data)
+        self._state_manager.update_state_data(normalized_phone, **kwargs)
 
     async def send_main_menu(self, phone_number: str, primary_text: str, secondary_text: str = "More options:") -> None:
         """Send main menu buttons (two rows) to the user."""
@@ -297,13 +294,15 @@ class WhatsAppBot:
             
             # Handle navigation
             elif button_id == "back":
-                state, _ = self.get_user_state(normalized_phone)
+                state, state_data = self.get_user_state(normalized_phone)
                 if state == self.STATE_BUNDLES_BUNDLE:
+                    # Go back to network selection
                     await bundles.start(normalized_phone, self)
                 elif state == self.STATE_BUNDLES_PHONE:
-                    bundle_id = self.get_user_state(normalized_phone)[1].get("selected_bundle_id")
-                    if bundle_id:
-                        await bundles.handle_bundle(normalized_phone, bundle_id, self)
+                    # Go back to bundle list for the selected network
+                    selected_network = state_data.get("selected_bundle_network") or state_data.get("selected_network")
+                    if selected_network:
+                        await bundles.handle_network(normalized_phone, selected_network, self)
                     else:
                         await bundles.start(normalized_phone, self)
                 else:

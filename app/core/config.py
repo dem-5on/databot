@@ -16,6 +16,11 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_TOKEN: str
     TELEGRAM_ADMIN_IDS: str  # Comma-separated list of admin Telegram IDs
     TELEGRAM_API_URL: str = "https://api.telegram.org/bot"
+    
+    # Telegram Webhook Configuration (Production)
+    TELEGRAM_WEBHOOK_URL: str = "https://toroidally-trichonotid-kemberly.ngrok-free.dev"  # Base URL (e.g., https://api.yourdomain.com)
+    TELEGRAM_WEBHOOK_SECRET: str = ""  # Secret token for webhook validation
+    TELEGRAM_USE_WEBHOOK: bool = True  # Set to True for production webhook mode
 
     WHATSAPP_BUSINESS_PHONE: str  # WhatsApp Business phone number in E.164 format (e.g., "233XXXXXXXXX") for referral links
     
@@ -28,9 +33,9 @@ class Settings(BaseSettings):
     WHATSAPP_API_URL: str = "https://graph.facebook.com/v18.0"
     WHATSAPP_ADMIN_NUMBERS: str  
     
-    # DatamartGH
-    DATAMART_API_URL: str = "https://api.datamartgh.shop/api/developer"
-    DATAMART_API_KEY: str
+    # # DatamartGH (DEPRECATED - kept for backwards compatibility)
+    # DATAMART_API_URL: str = "https://api.datamartgh.shop/api/developer"
+    # DATAMART_API_KEY: str = ""  # Optional - no longer used
 
     # Blessdatahub
     BLESSDATAHUB_API_URL: str = "https://www.blessdatahub.com/api"

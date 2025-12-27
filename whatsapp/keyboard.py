@@ -38,7 +38,7 @@ def get_network_buttons() -> List[Dict[str, str]]:
     """
     return [
         {"id": "network_MTN", "title": "MTN"},
-        {"id": "network_VODAFONE", "title": "TELECEL"},
+        {"id": "network_TELECEL", "title": "TELECEL"},
         {"id": "network_AIRTELTIGO", "title": "AIRTELTIGO"}
     ]
 
