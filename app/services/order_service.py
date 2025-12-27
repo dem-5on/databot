@@ -90,7 +90,7 @@ class OrderService:
                 # Blessdatahub returns order_ids array
                 order_ids = vendor_response.get("order_ids", [])
                 vendor_ref = str(order_ids[0]) if order_ids else ""
-                self.order_repo.update_order_status(
+                await self.order_repo.update_order_status(
                     order["id"],
                     OrderStatus.SUCCESS.value,
                     vendor_reference=vendor_ref,
@@ -104,7 +104,7 @@ class OrderService:
                 )
                 
                 # Get updated order
-                order = self.order_repo.get_by_id(order["id"])
+                order = await self.order_repo.get_by_id(order["id"])
                 
                 # Award referral bonus if this is user's first successful transaction
                 await self.referral_service.award_referral_bonus(user_id)

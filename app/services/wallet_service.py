@@ -58,9 +58,9 @@ class WalletService:
             if isinstance(raw_payload, dict) and raw_payload.get("wallet_credited"):
                 logger.info(f"Transaction {reference} already processed and wallet credited. Skipping credit.")
                 # Return existing wallet without crediting
-                wallet = self.wallet_repo.get_by_user_id(user_id)
+                wallet = await self.wallet_repo.get_by_user_id(user_id)
                 if not wallet:
-                    wallet = self.wallet_repo.get_or_create_wallet(user_id)
+                    wallet = await self.wallet_repo.get_or_create_wallet(user_id)
                 return wallet
             else:
                 # Status is SUCCESS but payload doesn't indicate credit - this is unusual

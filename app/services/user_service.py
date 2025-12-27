@@ -5,7 +5,6 @@ from app.repository.base_user_repo import BaseUserRepository
 from app.repository.telegram_user_repo import TelegramUserRepository
 from app.repository.whatsapp_user_repo import WhatsAppUserRepository
 from app.services.referral_service import ReferralService
-from app.utils.phone_utils import normalize_phone_number
 
 logger = logging.getLogger(__name__)
 

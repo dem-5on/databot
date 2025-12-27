@@ -166,6 +166,15 @@ async def root():
     return {"message": "Intejers Data Bundle Purchase System API"}
 
 
+@app.post("/telegram")
+async def telegram_redirect():
+    """
+    Redirect endpoint for old webhook URLs.
+    Telegram may retry to this old path - return 200 to stop retries.
+    """
+    return {"status": "ok", "message": "Please use /api/v1/webhooks/telegram"}
+
+
 if __name__ == "__main__":
     # Use multiple workers for production (handles 500+ users)
     # Set workers=1 for development/debugging
@@ -175,5 +184,5 @@ if __name__ == "__main__":
         host="0.0.0.0", 
         port=8000, 
         workers=workers,
-        reload=workers == 1  # Only enable reload in single-worker mode
+        reload=workers  # Only enable reload in single-worker mode
     )

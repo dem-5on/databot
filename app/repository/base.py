@@ -92,7 +92,7 @@ class BaseRepository:
             List of matching records
         """
         try:
-            query = await self.client.table(self.table_name).select("*").eq(field, value)
+            query = self.client.table(self.table_name).select("*").eq(field, value)
             if limit:
                 query = query.limit(limit)
             response = await query.execute()
@@ -175,7 +175,7 @@ class BaseRepository:
             List of records
         """
         try:
-            query = await self.client.table(self.table_name).select("*")
+            query = self.client.table(self.table_name).select("*")
             if order_by:
                 query = query.order(order_by, desc=not ascending)
             if limit:
@@ -234,13 +234,13 @@ class BaseRepository:
             Number of records matching the filters
         """
         try:
-            query = await self.client.table(self.table_name).select("*", count="exact")
+            query = self.client.table(self.table_name).select("*", count="exact")
             
             if filters:
                 for field, value in filters.items():
                     query = query.eq(field, value)
             
-            response = query.execute()
+            response = await query.execute()
             return response.count if hasattr(response, 'count') else 0
         except Exception as e:
             logger.error(f"Error counting records in {self.table_name}: {str(e)}")

@@ -176,7 +176,7 @@ class ReferralService:
             try:
                 referrer = await self.user_repo.get_by_id(referrer_id)
                 
-                if referrer:
+                if referrer and referrer.get("telegram_id"):
                     await NotifierService.send_user_message(
                         telegram_id=int(referrer["telegram_id"]),
                         text=f"🎉 <b>Referral Bonus Earned!</b>\n\n"

@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     TELEGRAM_API_URL: str = "https://api.telegram.org/bot"
     
     # Telegram Webhook Configuration (Production)
-    TELEGRAM_WEBHOOK_URL: str = "https://toroidally-trichonotid-kemberly.ngrok-free.dev"  # Base URL (e.g., https://api.yourdomain.com)
+    TELEGRAM_WEBHOOK_URL: str = ""  # Required in production (e.g., https://api.yourdomain.com)
     TELEGRAM_WEBHOOK_SECRET: str = ""  # Secret token for webhook validation
     TELEGRAM_USE_WEBHOOK: bool = True  # Set to True for production webhook mode
 
@@ -32,10 +32,6 @@ class Settings(BaseSettings):
     WHATSAPP_VERIFY_TOKEN: str  # Custom token for webhook verification
     WHATSAPP_API_URL: str = "https://graph.facebook.com/v18.0"
     WHATSAPP_ADMIN_NUMBERS: str  
-    
-    # # DatamartGH (DEPRECATED - kept for backwards compatibility)
-    # DATAMART_API_URL: str = "https://api.datamartgh.shop/api/developer"
-    # DATAMART_API_KEY: str = ""  # Optional - no longer used
 
     # Blessdatahub
     BLESSDATAHUB_API_URL: str = "https://www.blessdatahub.com/api"
@@ -44,7 +40,7 @@ class Settings(BaseSettings):
     BLESSDATAHUB_PURCHASE_TIMEOUT: int
 
     # Backend API
-    BACKEND_API_URL: str = "http://localhost:8000"
+    BACKEND_API_URL: str = ""
 
     # Purchase timeout in seconds
     PURCHASE_TIMEOUT: int
@@ -89,5 +85,3 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-
-

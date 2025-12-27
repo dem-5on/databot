@@ -177,7 +177,7 @@ async def confirm_deposit(request: DepositConfirmRequest):
         # Update transaction with OTP submission response
         updated_payload = raw_payload.copy()
         updated_payload["otp_submission"] = submit_response
-        transaction_repo.update_transaction_status(
+        await transaction_repo.update_transaction_status(
             transaction["id"],
             transaction["status"],
             raw_payload=updated_payload
@@ -264,7 +264,7 @@ async def verify_deposit(reference: str):
         # Update transaction with verification response
         updated_payload = raw_payload.copy()
         updated_payload["verification"] = verify_response
-        transaction_repo.update_transaction_status(
+        await transaction_repo.update_transaction_status(
             transaction["id"],
             transaction["status"],
             raw_payload=updated_payload
@@ -334,7 +334,7 @@ async def verify_deposit(reference: str):
                         "status": "success",
                         "message": "Transaction already processed and wallet credited",
                         "paystack_status": paystack_status,
-                        "transaction": transaction_repo.get_by_reference(reference)
+                        "transaction": await transaction_repo.get_by_reference(reference)
                     }
                 else:
                     raise
@@ -343,7 +343,7 @@ async def verify_deposit(reference: str):
                 "status": "success",
                 "message": "Transaction verified and wallet credited",
                 "paystack_status": paystack_status,
-                "transaction": transaction_repo.get_by_reference(reference)
+                "transaction": await transaction_repo.get_by_reference(reference)
             }
         elif paystack_status == "failed":
             # Payment failed
