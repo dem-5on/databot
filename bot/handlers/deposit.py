@@ -5,24 +5,24 @@ from decimal import Decimal
 from telegram import Update
 from app.core.config import settings
 from telegram.ext import ContextTypes, ConversationHandler
-from app.utils.phone_utils import validate_phone_number
+from app.utils.phone_utils import validate_phone_number, detect_network
 
 logger = logging.getLogger(__name__)
 
 # Conversation states
 AMOUNT, PHONE, OTP = range(3)
 
-# Network prefix mapping
+# Network prefix mapping (for display purposes)
 NETWORK_PREFIXES = {
     "MTN": ["024", "054", "055", "059", "053"],
-    "VODAFONE": ["020", "050"],
+    "TELECEL": ["020", "050"],
     "AIRTELTIGO": ["027", "057", "026", "056"]
 }
 
 
-def normalize_phone_number(phone: str) -> str:
+def normalize_phone_to_local(phone: str) -> str:
     """
-    Normalize phone number to standard format (0XXXXXXXXX).
+    Normalize phone number to local format (0XXXXXXXXX).
     
     Args:
         phone: Phone number in format 0XXXXXXXXX or 233XXXXXXXXX
@@ -37,28 +37,6 @@ def normalize_phone_number(phone: str) -> str:
         phone = "0" + phone[3:]
     
     return phone
-
-
-def detect_network(phone: str) -> str | None:
-    """
-    Detect mobile network from phone number prefix.
-    
-    Args:
-        phone: Phone number (should be normalized first)
-        
-    Returns:
-        Network name (MTN, VODAFONE, AIRTELTIGO) or None if not detected
-    """
-    if len(phone) < 10:
-        return None
-    
-    prefix = phone[:3]
-    
-    for network, prefixes in NETWORK_PREFIXES.items():
-        if prefix in prefixes:
-            return network
-    
-    return None
 
 
 
@@ -112,7 +90,7 @@ async def deposit_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return PHONE
     
     # Normalize phone number
-    normalized_phone = normalize_phone_number(phone)
+    normalized_phone = normalize_phone_to_local(phone)
     
     # Detect network
     network = detect_network(normalized_phone)
@@ -138,7 +116,7 @@ async def deposit_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Network display names
     network_display = {
         "MTN": "MTN",
-        "VODAFONE": "Vodafone",
+        "TELECEL": "Telecel",
         "AIRTELTIGO": "AirtelTigo"
     }
     

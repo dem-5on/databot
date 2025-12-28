@@ -12,6 +12,7 @@ from app.core.constants import TransactionType, TransactionStatus
 from app.repository.transaction_repo import TransactionRepository
 from app.core.rate_limit import limiter
 
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -325,7 +326,7 @@ async def verify_deposit(reference: str):
                             )
                 else:
                     # Wallet was already credited by another process (likely webhook)
-                    logging.info(f"Transaction {reference} was already credited by another process")
+                    logger.info(f"Transaction {reference} was already credited by another process")
             
             except ValueError as e:
                 # Transaction already processed (idempotency check)

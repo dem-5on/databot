@@ -1,7 +1,8 @@
 import logging
 from typing import Optional
 from pydantic import BaseModel
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Header, Depends
+from app.core.config import settings
 from app.services.user_service import UserService
 from app.repository.order_repo import OrderRepository
 from app.repository.transaction_repo import TransactionRepository
@@ -9,6 +10,16 @@ from app.repository.transaction_repo import TransactionRepository
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+async def verify_admin_api_key(x_api_key: str = Header(..., alias="X-API-Key")):
+    """
+    Verify the API key for admin-only endpoints.
+    Uses SUPABASE_KEY as the admin API key for simplicity.
+    """
+    if x_api_key != settings.SUPABASE_KEY:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+    return True
 
 
 class WhatsAppUserRequest(BaseModel):
@@ -162,7 +173,8 @@ async def get_user_history(
 @router.get("/{identifier}/debug-full")
 async def debug_full_user_data(
     identifier: str,
-    identifier_type: str = Query("telegram_id", regex="^(telegram_id|phone)$")
+    identifier_type: str = Query("telegram_id", regex="^(telegram_id|phone)$"),
+    _: bool = Depends(verify_admin_api_key)  # Require API key authentication
 ):
     """
     Comprehensive debug endpoint to diagnose why transactions/orders aren't showing.

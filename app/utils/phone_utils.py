@@ -100,9 +100,10 @@ def detect_network(phone: str) -> str | None:
         return None
     
     # Network prefix mapping for Ghana (format: 0XX)
+    # Note: TELECEL was formerly Vodafone Ghana
     network_prefixes = {
         "MTN": ["024", "054", "055", "059", "053"],
-        "VODAFONE": ["020", "050"],
+        "TELECEL": ["020", "050"],
         "AIRTELTIGO": ["027", "057", "026", "056"]
     }
     

@@ -44,6 +44,7 @@ class OrderService:
         bundle = await self.bundle_repo.get_by_id(bundle_id)
         if not bundle or not bundle.get("active"):
             await self.notifier.send_admin_alert(f"Bundle not found or inactive. Bundle ID: {bundle_id}")
+            raise ValueError(f"Bundle not found or inactive: {bundle_id}")
 
         bundle_price = float(bundle["price"])
         
@@ -51,7 +52,8 @@ class OrderService:
         wallet_balance = await self.wallet_service.get_balance(user_id)
         if wallet_balance < bundle_price:
             await self.notifier.send_admin_alert(f"<b>User: {user_id}</b>\n\nInsufficient balance. Account balance is : GHS{wallet_balance}, Require: GHS{bundle_price} to purchase {bundle['network']} {bundle['capacity']}GB bundle.")
-            
+            raise ValueError(f"Insufficient balance. Available: GHS{wallet_balance}, Required: GHS{bundle_price}")
+        
         # Create order
         order = await self.order_repo.create_order(
             user_id=user_id,

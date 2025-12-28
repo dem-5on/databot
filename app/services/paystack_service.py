@@ -23,8 +23,9 @@ class PaystackService:
         """Map our provider names to Paystack provider format."""
         provider_map = {
             "MTN": "mtn",
-            "VODAFONE": "vod",  # Changed from "vodafone" to "vod"
-            "AIRTELTIGO": "tgo",  # Changed from "tigo" to "tgo"
+            "TELECEL": "vod",  # Telecel (formerly Vodafone Ghana)
+            "VODAFONE": "vod",  # Legacy mapping for backwards compatibility
+            "AIRTELTIGO": "tgo",
         }
         return provider_map.get(provider.upper(), "mtn")
 

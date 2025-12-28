@@ -4,7 +4,7 @@ from telegram import Update
 from app.core.config import settings
 from telegram.ext import ContextTypes, ConversationHandler
 from app.utils.backend_client import BackendAPIClient
-from app.utils.phone_utils import validate_phone_number
+from app.utils.phone_utils import validate_phone_number, detect_network
 from bot.keyboard import get_network_keyboard, get_bundles_keyboard, get_phone_input_keyboard
 
 logging.basicConfig(level=logging.INFO)
@@ -16,21 +16,21 @@ BUNDLES_NETWORK, BUNDLES_BUNDLE, BUNDLES_PHONE = range(3)
 # Network display mapping
 NETWORK_DISPLAY = {
     "MTN": "MTN",
-    "VODAFONE": "Vodafone",
+    "TELECEL": "Telecel",
     "AIRTELTIGO": "AirtelTigo"
 }
 
-# Network prefix mapping for phone validation
+# Network prefix mapping for phone validation (for display purposes)
 NETWORK_PREFIXES = {
     "MTN": ["024", "054", "055", "059", "053"],
-    "VODAFONE": ["020", "050"],
+    "TELECEL": ["020", "050"],
     "AIRTELTIGO": ["027", "057", "026", "056"]
 }
 
 
-def normalize_phone_number(phone: str) -> str:
+def normalize_phone_to_local(phone: str) -> str:
     """
-    Normalize phone number to standard format (0XXXXXXXXX).
+    Normalize phone number to local format (0XXXXXXXXX).
     
     Args:
         phone: Phone number in format 0XXXXXXXXX or 233XXXXXXXXX
@@ -45,28 +45,6 @@ def normalize_phone_number(phone: str) -> str:
         phone = "0" + phone[3:]
     
     return phone
-
-
-def detect_network(phone: str) -> str | None:
-    """
-    Detect mobile network from phone number prefix.
-    
-    Args:
-        phone: Phone number (should be normalized first)
-        
-    Returns:
-        Network name (MTN, VODAFONE, AIRTELTIGO) or None if not detected
-    """
-    if len(phone) < 10:
-        return None
-    
-    prefix = phone[:3]
-    
-    for network, prefixes in NETWORK_PREFIXES.items():
-        if prefix in prefixes:
-            return network
-    
-    return None
 
 
 
@@ -259,8 +237,8 @@ async def bundles_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return BUNDLES_PHONE
     
-    # Normalize phone number
-    normalized_phone = normalize_phone_number(phone)
+    # Normalize phone number to local format (0XXXXXXXXX)
+    normalized_phone = normalize_phone_to_local(phone)
     
     # Get the selected bundle's network
     bundle_network = context.user_data.get('selected_bundle_network', context.user_data.get('selected_network', ''))

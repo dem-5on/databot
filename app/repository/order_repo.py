@@ -4,6 +4,7 @@ from uuid import uuid4
 from decimal import Decimal
 from datetime import datetime
 from app.repository.base import BaseRepository
+from app.core.constants import OrderStatus
 
 logger = logging.getLogger(__name__)
 
@@ -279,19 +280,19 @@ class OrderRepository(BaseRepository):
             total_spent = sum(
                 Decimal(o["price"]) 
                 for o in all_orders 
-                if o["status"] == "completed"
+                if o["status"] == OrderStatus.SUCCESS.value
             )
             
             completed_count = sum(
-                1 for o in all_orders if o["status"] == "completed"
+                1 for o in all_orders if o["status"] == OrderStatus.SUCCESS.value
             )
             
             pending_count = sum(
-                1 for o in all_orders if o["status"] == "pending"
+                1 for o in all_orders if o["status"] == OrderStatus.PENDING.value
             )
             
             failed_count = sum(
-                1 for o in all_orders if o["status"] == "failed"
+                1 for o in all_orders if o["status"] == OrderStatus.FAILED.value
             )
             
             return {

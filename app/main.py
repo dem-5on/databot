@@ -184,5 +184,5 @@ if __name__ == "__main__":
         host="0.0.0.0", 
         port=8000, 
         workers=workers,
-        reload=workers  # Only enable reload in single-worker mode
+        reload=workers == 1  # Only enable reload in single-worker mode
     )

@@ -24,11 +24,7 @@ celery_app.conf.update(
     task_acks_late=True,
     
     # Beat schedule for periodic tasks
-    beat_schedule={
-        "sync-bundles-daily": {
-            "task": "app.tasks.sync_bundles_task",
-            "schedule": 86400.0,  # 24 hours in seconds
-            # Alternative: crontab(hour=0, minute=0) for exact 12 AM
-        },
-    },
+    # Note: Bundle sync is disabled - Blessdatahub uses static pricing
+    # Bundles are seeded via SQL script (seed_bundles.sql)
+    beat_schedule={},
 )

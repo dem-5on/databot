@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 # Network prefix mapping
 NETWORK_PREFIXES = {
     "MTN": ["024", "054", "055", "059", "053"],
-    "VODAFONE": ["020", "050"],
+    "TELECEL": ["020", "050"],
     "AIRTELTIGO": ["027", "057", "026", "056"]
 }
 
@@ -284,7 +284,7 @@ async def handle_phone(phone_number: str, phone_input: str, bot) -> None:
         # Network display names
         network_display = {
             "MTN": "MTN",
-            "VODAFONE": "Vodafone",
+            "TELECEL": "Telecel",
             "AIRTELTIGO": "AirtelTigo"
         }
         

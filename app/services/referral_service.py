@@ -17,10 +17,12 @@ logger = logging.getLogger(__name__)
 class ReferralService:
     """Service for handling referral operations using Supabase."""
 
-    REFERRAL_BONUS_AMOUNT = Decimal("1.0")
+    # Use configurable referral bonus from settings
     REFERRAL_CODE_LENGTH = 8
 
     def __init__(self):
+        from app.core.config import settings
+        self.REFERRAL_BONUS_AMOUNT = Decimal(str(settings.REFERRAL_BONUS_AMOUNT))
         self.user_repo = UserRepository()
         self.referral_repo = ReferralRepository()
         self.transaction_repo = TransactionRepository()
