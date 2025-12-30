@@ -2,6 +2,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 import httpx
 from app.core.config import settings
+from bot.api_client import get_auth_headers
 
 
 async def balance_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -11,8 +12,10 @@ async def balance_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         async with httpx.AsyncClient() as client:
+            headers = get_auth_headers(telegram_id, "telegram")
             response = await client.get(
                 f"{settings.BACKEND_API_URL}/api/v1/wallet/balance/{telegram_id}",
+                headers=headers,
                 timeout=10.0
             )
             response.raise_for_status()

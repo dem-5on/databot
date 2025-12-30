@@ -34,9 +34,37 @@ async def get_bundles(network: Optional[str] = None):
     bundle_repo = BundleRepository()
     
     if network:
-        bundles = await bundle_repo.get_by_network(network.upper(), active_only=True)
+        # Try to get bundles with the network name (case-insensitive)
+        # First try uppercase, then try original, then try common variations
+        network_upper = network.upper()
+        bundles = await bundle_repo.get_by_network(network_upper, active_only=True)
+        
+        # If no results, try the exact network name passed
+        if not bundles:
+            bundles = await bundle_repo.get_by_network(network, active_only=True)
+        
+        # Try common variations for AirtelTigo
+        if not bundles and network_upper in ["AIRTELTIGO", "AIRTEL-TIGO"]:
+            bundles = await bundle_repo.get_by_network("AirtelTigo", active_only=True)
     else:
         bundles = await bundle_repo.get_active_bundles()
+    
+    # Sort bundles by capacity (smallest to largest)
+    def parse_capacity(capacity_str: str) -> float:
+        """Parse capacity string like '1GB', '500MB' to numeric value in GB."""
+        try:
+            cap = capacity_str.upper().strip()
+            if "GB" in cap:
+                return float(cap.replace("GB", "").strip())
+            elif "MB" in cap:
+                return float(cap.replace("MB", "").strip()) / 1024
+            else:
+                # Try parsing as plain number
+                return float(cap)
+        except:
+            return 0.0
+    
+    bundles = sorted(bundles, key=lambda b: parse_capacity(b.get("capacity", "0")))
     
     return {
         "bundles": [

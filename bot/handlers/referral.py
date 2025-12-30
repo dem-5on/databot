@@ -2,6 +2,7 @@ import httpx
 from telegram import Update
 from app.core.config import settings
 from telegram.ext import ContextTypes
+from bot.api_client import get_auth_headers
 
 
 async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -10,10 +11,14 @@ async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = str(user.id)
     
     try:
+        # Get authentication headers
+        headers = get_auth_headers(telegram_id, "telegram")
+        
         # Get referral code
         async with httpx.AsyncClient() as client:
             code_response = await client.get(
                 f"{settings.BACKEND_API_URL}/api/v1/referrals/code/{telegram_id}",
+                headers=headers,
                 timeout=10.0
             )
             code_response.raise_for_status()
@@ -22,6 +27,7 @@ async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Get referral stats
             stats_response = await client.get(
                 f"{settings.BACKEND_API_URL}/api/v1/referrals/referrals/{telegram_id}",
+                headers=headers,
                 timeout=10.0
             )
             stats_response.raise_for_status()

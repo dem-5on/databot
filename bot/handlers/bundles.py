@@ -288,6 +288,9 @@ def get_network_prefixes_text(network: str) -> str:
     return " • " + ", ".join(prefixes) if prefixes else "Unknown"
 
 
+from bot.api_client import get_auth_headers
+
+
 async def create_order_from_bundle(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
@@ -300,6 +303,7 @@ async def create_order_from_bundle(
     
     try:
         client = BackendAPIClient.get_client()
+        headers = get_auth_headers(telegram_id, "telegram")
         response = await client.post(
             f"{settings.BACKEND_API_URL}/api/v1/orders",
             json={
@@ -307,6 +311,7 @@ async def create_order_from_bundle(
                 "bundle_id": bundle_id,
                 "phone": phone
             },
+            headers=headers,
             timeout=60.0
         )
         response.raise_for_status()

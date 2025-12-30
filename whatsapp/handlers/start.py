@@ -3,6 +3,7 @@ import logging
 from app.core.config import settings
 from app.utils.phone_utils import normalize_phone_number
 from app.services.whatsapp_notifier import WhatsAppNotifierService
+from bot.api_client import get_auth_headers
 
 logger = logging.getLogger(__name__)
 
@@ -32,9 +33,13 @@ async def start_handler(phone_number: str, bot, referral_code: str = None) -> No
                 if referral_code:
                     request_data["referral_code"] = referral_code
                 
+                # Include authentication headers
+                headers = get_auth_headers(normalized_phone, "whatsapp")
+                
                 response = await client.post(
                     f"{settings.BACKEND_API_URL}/api/v1/users/ensure-whatsapp",
                     json=request_data,
+                    headers=headers,
                     timeout=10.0
                 )
                 response.raise_for_status()

@@ -54,6 +54,11 @@ class Settings(BaseSettings):
     # Price markup percentage
     PRICE_MARKUP_PERCENTAGE: int
 
+    # Authentication & Security
+    BOT_BACKEND_SECRET: str = ""  # Shared secret for HMAC signature verification
+    ADMIN_API_KEYS: str = ""  # Comma-separated list of admin API keys
+    DASHBOARD_TOKEN: str = ""  # 64-character token for monitoring dashboard access
+
     # HTTP Connection Pool Settings
     MAX_KEEPALIVE_CONNECTIONS: int = 20
     MAX_CONNECTIONS: int = 100

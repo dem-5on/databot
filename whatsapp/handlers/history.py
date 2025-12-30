@@ -3,6 +3,7 @@ import logging
 from app.core.config import settings
 from app.utils.phone_utils import normalize_phone_number
 from app.services.whatsapp_notifier import WhatsAppNotifierService
+from bot.api_client import get_auth_headers
 
 
 logger = logging.getLogger(__name__)
@@ -32,12 +33,16 @@ async def history_handler(phone_number: str, bot) -> None:
             )
             return
         
+        # Get authentication headers
+        headers = get_auth_headers(normalized_phone, "whatsapp")
+        
         # Get history from backend API
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(
                     f"{settings.BACKEND_API_URL}/api/v1/users/{normalized_phone}/history",
                     params={"limit": 10, "identifier_type": "phone"},
+                    headers=headers,
                     timeout=10.0
                 )
                 response.raise_for_status()
@@ -96,4 +101,3 @@ async def history_handler(phone_number: str, bot) -> None:
             normalized_phone,
             "❌ An error occurred. Please try again later."
         )
-

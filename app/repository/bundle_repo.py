@@ -217,7 +217,10 @@ class BundleRepository(BaseRepository):
             if not response.data or len(response.data) == 0:
                 logger.warning(f"Update returned no data for bundle {bundle_id}")
                 return None
-                
+            
+            # Invalidate cache so users see the update immediately
+            _bundle_cache.invalidate()
+            
             logger.info(f"Successfully updated bundle {bundle_id}")
             return response.data[0]
             

@@ -23,6 +23,11 @@ from app.services.whatsapp_notifier import WhatsAppNotifierService
 from app.api.v1.webhooks.paystack import router as paystack_webhook_router
 from app.api.v1.webhooks.whatsapp import router as whatsapp_webhook_router
 from app.api.v1.webhooks.telegram_webhook import router as telegram_webhook_router
+from app.api.v1.dashboard import router as dashboard_router
+from app.api.v1.system import router as system_router
+from app.api.v1.health import router as health_router
+
+# ... imports end ...
 
 
 logging.basicConfig(level=logging.INFO)
@@ -131,11 +136,25 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-allowed_origins = settings.ALLOWED_ORIGINS
 # CORS middleware
+# If allowed_origins contains "*", allow_credentials MUST be False
+# We'll set a explicit list for dev convenience
+origins = settings.ALLOWED_ORIGINS
+if "*" in origins:
+    # In dev, we can allow everything if we don't need credentials
+    # but since allow_credentials is True, we must be specific
+    origins = [
+        "http://localhost:8080",
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:8080",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:3000",
+    ]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -150,14 +169,11 @@ app.include_router(paystack_webhook_router, prefix="/api/v1/webhooks/paystack", 
 app.include_router(whatsapp_webhook_router, prefix="/api/v1/webhooks/whatsapp", tags=["webhooks"])
 app.include_router(telegram_webhook_router, prefix="/api/v1/webhooks/telegram", tags=["webhooks"])
 app.include_router(admin_router, prefix="/api/v1/admin", tags=["admin"])
+app.include_router(system_router, prefix="/api/v1/system", tags=["system"])
 app.include_router(referrals_router, prefix="/api/v1/referrals", tags=["referrals"])
 app.include_router(sync_bundles, prefix="/sync", tags=["sync"])
-
-
-@app.get("/health")
-async def health_check():
-    """Health check endpoint."""
-    return {"status": "ok"}
+app.include_router(dashboard_router, prefix="/api/v1/dashboard", tags=["dashboard"])
+app.include_router(health_router, prefix="/api/v1/health", tags=["health"])
 
 
 @app.get("/")

@@ -3,14 +3,16 @@ import logging
 from decimal import Decimal
 from typing import Optional
 from pydantic import BaseModel
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Depends
+from app.core.auth import verify_user_access, get_user_identity, UserIdentity
+from app.core.rate_limit import limiter
+from app.api.schemas import BalanceResponseDTO
 from app.services.notifier import NotifierService
 from app.services.wallet_service import WalletService
 from app.services.paystack_service import PaystackService
 from app.services.referral_service import ReferralService
 from app.core.constants import TransactionType, TransactionStatus
 from app.repository.transaction_repo import TransactionRepository
-from app.core.rate_limit import limiter
 
 logger = logging.getLogger(__name__)
 
@@ -31,9 +33,14 @@ class DepositConfirmRequest(BaseModel):
 
 @router.post("/deposit/init")
 @limiter.limit("5/minute")
-async def init_deposit(request: Request, deposit_data: DepositInitRequest):
+async def init_deposit(
+    request: Request,
+    deposit_data: DepositInitRequest,
+    user: UserIdentity = Depends(get_user_identity)
+):
     """
     Initialize a deposit transaction and create Paystack charge.
+    Requires authentication via X-User-ID, X-Platform, and X-Signature headers.
     """
     from app.services.user_service import UserService
     
@@ -105,14 +112,22 @@ async def init_deposit(request: Request, deposit_data: DepositInitRequest):
         raise HTTPException(status_code=500, detail=f"Failed to initiate charge: {str(e)}")
 
 
-@router.get("/balance/{identifier}")
+@router.get("/balance/{identifier}", response_model=BalanceResponseDTO)
+@limiter.limit("30/minute")
 async def get_balance(
-    identifier: str,
+    request: Request,
+    identifier: str = Depends(verify_user_access),
     identifier_type: str = "telegram_id"  # "telegram_id" or "phone"
 ):
     """
-    Get wallet balance for user.
-    Can use either telegram_id or phone number as identifier.
+    Get wallet balance for authenticated user.
+    
+    Requires authentication via X-User-ID, X-Platform, and X-Signature headers.
+    Users can only check their own balance.
+    
+    Args:
+        identifier: User identifier (auto-verified via auth)
+        identifier_type: "telegram_id" or "phone"
     """
     from app.services.user_service import UserService
     
@@ -130,13 +145,13 @@ async def get_balance(
     
     balance = await wallet_service.get_balance(user["id"])
     
-    return {
-        "user_id": user["id"],
-        "telegram_id": user.get("telegram_id"),
-        "phone": user.get("whatsapp_phone"),
-        "balance": str(balance),
-        "currency": "GHS"
-    }
+    return BalanceResponseDTO(
+        user_id=user["id"],
+        telegram_id=user.get("telegram_id"),
+        phone=user.get("whatsapp_phone"),
+        balance=str(balance),
+        currency="GHS"
+    )
 
 
 @router.post("/deposit/confirm")

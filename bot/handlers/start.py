@@ -1,8 +1,7 @@
-import httpx
 from telegram import Update
-from app.core.config import settings
 from telegram.ext import ContextTypes
 from bot.keyboard import get_main_keyboard
+from bot.api_client import telegram_api
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -17,27 +16,20 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(parts) > 1:
             referral_code = parts[1]
     
-    # Register user via backend
+    # Register user via backend with authentication
     try:
-        async with httpx.AsyncClient() as client:
-            params = {"telegram_id": telegram_id, "name": user.full_name or ""}
-            if referral_code:
-                params["referral_code"] = referral_code
-            
-            response = await client.post(
-                f"{settings.BACKEND_API_URL}/api/v1/users/ensure",
-                params=params,
-                timeout=10.0
+        user_data = await telegram_api.ensure_user(
+            user_id=telegram_id,
+            name=user.full_name or "",
+            referral_code=referral_code
+        )
+        
+        # Show referral message if new user was referred
+        if referral_code and user_data.get("is_new_user"):
+            await update.message.reply_text(
+                f"🎉 Welcome! You were referred by someone using code: {referral_code}\n"
+                "Complete your first transaction to activate their referral bonus!"
             )
-            response.raise_for_status()
-            user_data = response.json()
-            
-            # Show referral message if new user was referred
-            if referral_code and user_data.get("is_new_user"):
-                await update.message.reply_text(
-                    f"🎉 Welcome! You were referred by someone using code: {referral_code}\n"
-                    "Complete your first transaction to activate their referral bonus!"
-                )
     except Exception as e:
         await update.message.reply_text(
             f"⚠️ Error connecting to backend. Please try again later.\n\nError: {str(e)}"
@@ -71,4 +63,3 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         welcome_text,
         reply_markup=get_main_keyboard()
     )
-

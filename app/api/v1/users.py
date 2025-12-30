@@ -1,8 +1,11 @@
 import logging
 from typing import Optional
 from pydantic import BaseModel
-from fastapi import APIRouter, HTTPException, Query, Header, Depends
+from fastapi import APIRouter, HTTPException, Query, Header, Depends, Request
 from app.core.config import settings
+from app.core.auth import get_user_identity, verify_user_access, verify_admin_access, UserIdentity
+from app.core.rate_limit import limiter
+from app.api.schemas import UserHistoryResponseDTO, TransactionHistoryItemDTO, OrderHistoryItemDTO
 from app.services.user_service import UserService
 from app.repository.order_repo import OrderRepository
 from app.repository.transaction_repo import TransactionRepository
@@ -12,14 +15,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-async def verify_admin_api_key(x_api_key: str = Header(..., alias="X-API-Key")):
-    """
-    Verify the API key for admin-only endpoints.
-    Uses SUPABASE_KEY as the admin API key for simplicity.
-    """
-    if x_api_key != settings.SUPABASE_KEY:
-        raise HTTPException(status_code=403, detail="Invalid API key")
-    return True
+# NOTE: verify_admin_api_key is now imported from app.core.auth as verify_admin_access
+# It uses dedicated ADMIN_API_KEYS instead of SUPABASE_KEY for better security
 
 
 class WhatsAppUserRequest(BaseModel):
@@ -32,10 +29,13 @@ async def ensure_user(
     telegram_id: str,
     name: str = None,
     referral_code: str = None,
+    user: UserIdentity = Depends(get_user_identity)
 ):
     """
     Ensure Telegram user exists, create if not.
-    Can be called as POST with query params or JSON body.
+    Requires authentication via X-User-ID, X-Platform, and X-Signature headers.
+    
+    The telegram_id in the request must match the authenticated user.
     If referral_code is provided, register the referral.
     """
     user_service = UserService()
@@ -43,64 +43,85 @@ async def ensure_user(
     if not telegram_id:
         raise HTTPException(status_code=400, detail="telegram_id is required")
     
-    user, is_new_user = await user_service.get_or_create_telegram_user(
+    # Authorization: verify the telegram_id matches the authenticated user
+    if telegram_id != user.user_id or user.platform != "telegram":
+        raise HTTPException(
+            status_code=403,
+            detail="telegram_id must match authenticated user"
+        )
+    
+    user_data, is_new_user = await user_service.get_or_create_telegram_user(
         telegram_id=telegram_id,
         name=name,
         referral_code=referral_code
     )
     
     return {
-        "user_id": user["id"],
-        "telegram_id": user.get("telegram_id"),
-        "phone": user.get("phone"),
-        "name": user.get("name"),
-        "referral_code": user.get("referral_code"),
-        "platform": user.get("platform"),
+        "user_id": user_data["id"],
+        "telegram_id": user_data.get("telegram_id"),
+        "phone": user_data.get("phone"),
+        "name": user_data.get("name"),
+        "referral_code": user_data.get("referral_code"),
+        "platform": user_data.get("platform"),
         "is_new_user": is_new_user
     }
 
 
 @router.post("/ensure-whatsapp")
 async def ensure_whatsapp_user(
-    request: WhatsAppUserRequest
+    request: WhatsAppUserRequest,
+    user: UserIdentity = Depends(get_user_identity)
 ):
     """
     Ensure WhatsApp user exists, create if not.
-    Uses phone number as identifier.
+    Requires authentication via X-User-ID, X-Platform, and X-Signature headers.
+    
+    The phone_number in the request must match the authenticated user.
     If referral_code is provided, register the referral.
     """
     logger.info(f"Received WhatsApp user request: phone={request.phone_number}, name={request.name}")
 
+    # Authorization: verify the phone_number matches the authenticated user
+    if request.phone_number != user.user_id or user.platform != "whatsapp":
+        raise HTTPException(
+            status_code=403,
+            detail="phone_number must match authenticated user"
+        )
+
     user_service = UserService()
     
-    user, is_new_user = await user_service.get_or_create_whatsapp_user(
+    user_data, is_new_user = await user_service.get_or_create_whatsapp_user(
         phone_number=request.phone_number,
         name=request.name,
         referral_code=request.referral_code
     )
     
     return {
-        "user_id": user["id"],
-        "phone": user.get("phone"),
-        "name": user.get("name"),
-        "referral_code": user.get("referral_code"),
-        "platform": user.get("platform"),
+        "user_id": user_data["id"],
+        "phone": user_data.get("phone"),
+        "name": user_data.get("name"),
+        "referral_code": user_data.get("referral_code"),
+        "platform": user_data.get("platform"),
         "is_new_user": is_new_user
     }
 
 
-@router.get("/{identifier}/history")
+@router.get("/{identifier}/history", response_model=UserHistoryResponseDTO)
+@limiter.limit("30/minute")
 async def get_user_history(
-    identifier: str,
+    request: Request,
+    identifier: str = Depends(verify_user_access),
     limit: int = Query(10, ge=1, le=100),
     identifier_type: str = Query("telegram_id", regex="^(telegram_id|phone)$")
 ):
     """
-    Get transaction and order history for user.
-    Can use either telegram_id or phone number as identifier.
+    Get transaction and order history for authenticated user.
+    
+    Requires authentication via X-User-ID, X-Platform, and X-Signature headers.
+    Users can only view their own history.
     
     Args:
-        identifier: User's telegram_id or phone number
+        identifier: User's telegram_id or phone number (auto-verified via auth)
         limit: Number of records to return (1-100)
         identifier_type: Type of identifier - "telegram_id" or "phone"
     """
@@ -142,39 +163,41 @@ async def get_user_history(
         logger.error(f"Error fetching orders: {str(e)}")
         orders = []
 
-    return {
-        "user_id": user["id"],
-        "transactions": [
-            {
-                "id": t["id"],
-                "type": t["type"],
-                "amount": t["amount"],
-                "currency": t["currency"],
-                "status": t["status"],
-                "reference": t["reference"],
-                "created_at": t.get("created_at")
-            }
+    return UserHistoryResponseDTO(
+        user_id=user["id"],
+        transactions=[
+            TransactionHistoryItemDTO(
+                id=t["id"],
+                type=t["type"],
+                amount=t["amount"],
+                currency=t["currency"],
+                status=t["status"],
+                reference=t["reference"],
+                created_at=t.get("created_at")
+            )
             for t in transactions
         ],
-        "orders": [
-            {
-                "id": o["id"],
-                "bundle_id": o["bundle_id"],
-                "phone": o["phone"],
-                "price": o["price"],
-                "status": o["status"],
-                "vendor_reference": o.get("vendor_reference"),
-                "created_at": o.get("created_at")
-            }
+        orders=[
+            OrderHistoryItemDTO(
+                id=o["id"],
+                bundle_id=o["bundle_id"],
+                phone=o["phone"],
+                price=o["price"],
+                status=o["status"],
+                vendor_reference=o.get("vendor_reference"),
+                created_at=o.get("created_at")
+            )
             for o in orders
         ]
-    }
+    )
 
 @router.get("/{identifier}/debug-full")
+@limiter.limit("10/hour")
 async def debug_full_user_data(
+    request: Request,
     identifier: str,
     identifier_type: str = Query("telegram_id", regex="^(telegram_id|phone)$"),
-    _: bool = Depends(verify_admin_api_key)  # Require API key authentication
+    admin_key: str = Depends(verify_admin_access)  # Require admin API key
 ):
     """
     Comprehensive debug endpoint to diagnose why transactions/orders aren't showing.

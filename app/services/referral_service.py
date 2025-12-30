@@ -210,3 +210,71 @@ class ReferralService:
             }
             for ref in referrals
         ]
+
+
+    async def get_leaderboard(self, limit: int = 10) -> list:
+        """
+        Get referral leaderboard with user details.
+        """
+        stats = await self.referral_repo.get_leaderboard(limit)
+        
+        # Enrich with user details
+        leaderboard = []
+        for item in stats:
+            user = await self.user_repo.get_by_id(item["user_id"])
+            name = await self._enrich_user_name(user, item["user_id"])
+            
+            leaderboard.append({
+                "user_id": item["user_id"],
+                "name": name,
+                "total_referrals": item["total_referrals"],
+                "total_bonus": item["total_bonus"],
+                "conversion_rate": item.get("conversion_rate", 0)
+            })
+        
+        return leaderboard
+
+    async def get_stats(self) -> dict:
+        """Get global referral stats."""
+        return await self.referral_repo.get_stats()
+
+    async def get_recent_payouts(self, limit: int = 10) -> list:
+        """Get recent bonus payouts enriched with names."""
+        payouts = await self.referral_repo.get_recent_payouts(limit)
+        
+        enriched = []
+        for p in payouts:
+            referrer = await self.user_repo.get_by_id(p["referrer_id"])
+            referred = await self.user_repo.get_by_id(p["referred_id"])
+            
+            referrer_name = await self._enrich_user_name(referrer, p["referrer_id"])
+            referred_name = await self._enrich_user_name(referred, p["referred_id"])
+            
+            enriched.append({
+                "id": p["id"],
+                "referrer": referrer_name,
+                "referred": referred_name,
+                "amount": float(p.get("bonus_amount", 0)),
+                "date": p.get("bonus_paid_at"),
+                "deposit_amount": 0 # Not stored in referral table usually, would need lookup
+            })
+            
+        return enriched
+
+    async def _enrich_user_name(self, user: dict, user_id: str) -> str:
+        """Helper to get display name for user."""
+        if not user:
+            return f"User {user_id[:8]}"
+            
+        if user.get("name"):
+            return user["name"]
+        elif user.get("telegram_id"):
+            # Check telegram user table? Or just use what we have
+            # BaseUser doesn't have telegram_id directly usually unless synced
+            # But the repo might join or user logic puts it there. 
+            # Assuming BaseUser object:
+            return f"User {user['telegram_id']}"
+        elif user.get("phone"):
+            return f"{user['phone'][:4]}...{user['phone'][-3:]}"
+        else:
+            return f"User {user_id[:8]}"

@@ -6,6 +6,7 @@ from telegram import Update
 from app.core.config import settings
 from telegram.ext import ContextTypes, ConversationHandler
 from app.utils.phone_utils import validate_phone_number, detect_network
+from bot.api_client import get_auth_headers
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +125,7 @@ async def deposit_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         
         async with httpx.AsyncClient() as client:
+            headers = get_auth_headers(telegram_id, "telegram")
             logger.info(f"Initializing deposit: telegram_id={telegram_id}, amount={amount}, phone={normalized_phone}, provider={network}")
             
             response = await client.post(
@@ -134,6 +136,7 @@ async def deposit_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "phone": normalized_phone,
                     "provider": network
                 },
+                headers=headers,
                 timeout=30.0
             )
             
@@ -245,6 +248,10 @@ async def deposit_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Submit OTP to backend
     try:
+        user = update.effective_user
+        telegram_id = str(user.id)
+        headers = get_auth_headers(telegram_id, "telegram")
+        
         async with httpx.AsyncClient() as client:
             logger.info(f"Submitting OTP for reference: {reference}")
             
@@ -254,6 +261,7 @@ async def deposit_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "reference": reference,
                     "otp": otp
                 },
+                headers=headers,
                 timeout=30.0
             )
             response.raise_for_status()
@@ -287,6 +295,7 @@ async def deposit_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     logger.info(f"Verifying transaction: {reference}")
                     verify_response = await client.post(
                         f"{settings.BACKEND_API_URL}/api/v1/wallet/deposit/verify/{reference}",
+                        headers=headers,
                         timeout=30.0
                     )
                     verify_response.raise_for_status()
@@ -320,6 +329,7 @@ async def deposit_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         try:
                             verify_response2 = await client.post(
                                 f"{settings.BACKEND_API_URL}/api/v1/wallet/deposit/verify/{reference}",
+                                headers=headers,
                                 timeout=30.0
                             )
                             verify_response2.raise_for_status()
