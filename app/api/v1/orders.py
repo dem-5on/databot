@@ -1,9 +1,12 @@
 """Order API endpoints using Supabase repositories."""
 from typing import Optional
 from pydantic import BaseModel
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends, Request
 from app.services.order_service import OrderService
 from app.services.user_service import UserService
+from app.core.auth import get_user_identity, UserIdentity
+from app.core.rate_limit import limiter
+from app.utils.security_utils import validate_uuid_format, safe_error_response
 
 router = APIRouter()
 
@@ -16,23 +19,40 @@ class CreateOrderRequest(BaseModel):
 
 
 @router.post("")
-async def create_order(request: CreateOrderRequest):
+@limiter.limit("5/minute")
+async def create_order(
+    request: Request,
+    order_in: CreateOrderRequest,
+    user: UserIdentity = Depends(get_user_identity)
+):
     """
     Create a bundle purchase order.
     """
+    # Use request data renamed to avoid conflict with Request object
+    request = order_in
+
+    # SECURITY: Validate bundle_id is a valid UUID format
+    try:
+        validate_uuid_format(request.bundle_id, "Bundle ID")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     
     user_service = UserService()
     
     # Get user - either by user_id (WhatsApp) or telegram_id (Telegram)
     if request.user_id:
-        # WhatsApp: user_id provided directly
-        user = await user_service.get_user_by_id(request.user_id)
-        if not user:
+        # SECURITY: Validate user_id matches authenticated user
+        if request.user_id != user.user_id:
+            raise HTTPException(status_code=403, detail="User ID mismatch")
+        db_user = await user_service.get_user_by_id(request.user_id)
+        if not db_user:
             raise HTTPException(status_code=404, detail="User not found")
     elif request.telegram_id:
-        # Telegram: look up by telegram_id
-        user = await user_service.get_user_by_telegram_id(request.telegram_id)
-        if not user:
+        # SECURITY: Validate telegram_id matches authenticated user
+        if request.telegram_id != user.user_id:
+            raise HTTPException(status_code=403, detail="Telegram ID mismatch")
+        db_user = await user_service.get_user_by_telegram_id(request.telegram_id)
+        if not db_user:
             raise HTTPException(status_code=404, detail="User not found")
     else:
         raise HTTPException(status_code=400, detail="Either telegram_id or user_id must be provided")
@@ -41,7 +61,7 @@ async def create_order(request: CreateOrderRequest):
     order_service = OrderService()
     try:
         order = await order_service.create_order(
-            user_id=user["id"],
+            user_id=db_user["id"],
             bundle_id=request.bundle_id,
             phone=request.phone
         )
@@ -56,4 +76,4 @@ async def create_order(request: CreateOrderRequest):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_response(e, "creating order"))

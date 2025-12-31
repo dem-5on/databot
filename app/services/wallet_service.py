@@ -4,6 +4,7 @@ from decimal import Decimal
 from app.repository.wallet_repo import WalletRepository
 from app.repository.transaction_repo import TransactionRepository
 from app.core.constants import TransactionStatus, TransactionType
+from app.utils.locking import wallet_lock, LockAcquisitionError
 
 logger = logging.getLogger(__name__)
 class WalletService:
@@ -28,10 +29,11 @@ class WalletService:
         reference: str
     ) -> dict:
         """
-        Credit wallet with amount (idempotent operation).
+        Credit wallet with amount (idempotent operation with distributed locking).
         
         This method is idempotent - it checks transaction status before crediting
         to prevent double crediting if both webhook and manual verification fire.
+        Uses Redis-based distributed locking to prevent race conditions.
         
         Args:
             user_id: User ID
@@ -43,93 +45,75 @@ class WalletService:
             
         Raises:
             ValueError: If transaction is already processed (idempotency check)
+            LockAcquisitionError: If unable to acquire lock (operation in progress)
         """
-       
-        
-        # First, check transaction status to prevent double crediting
-        transaction = await self.transaction_repo.get_by_reference(reference)
-        if not transaction:
-            raise ValueError(f"Transaction not found: {reference}")
-        
-        # IDEMPOTENCY CHECK: If transaction is already SUCCESS, don't credit again
-        if transaction["status"] == TransactionStatus.SUCCESS.value:
-            # Check if wallet was already credited by looking at payload
-            raw_payload = transaction.get("raw_payload") or {}
-            if isinstance(raw_payload, dict) and raw_payload.get("wallet_credited"):
-                logger.info(f"Transaction {reference} already processed and wallet credited. Skipping credit.")
-                # Return existing wallet without crediting
-                wallet = await self.wallet_repo.get_by_user_id(user_id)
-                if not wallet:
-                    wallet = await self.wallet_repo.get_or_create_wallet(user_id)
-                return wallet
-            else:
-                # Status is SUCCESS but payload doesn't indicate credit - this is unusual
-                # Log warning but don't credit to be safe
-                logger.warning(
-                    f"Transaction {reference} has SUCCESS status but no wallet_credited flag. "
-                    f"Skipping credit to prevent double crediting."
-                )
-                wallet = await self.wallet_repo.get_by_user_id(user_id)
-                if not wallet:
-                    wallet = await self.wallet_repo.get_or_create_wallet(user_id)
-                return wallet
-        
-        # If transaction is FAILED, don't credit
-        if transaction["status"] == TransactionStatus.FAILED.value:
-            raise ValueError(f"Transaction {reference} has failed status. Cannot credit wallet.")
-        
-        # Get or create wallet
-        wallet = await self.wallet_repo.get_or_create_wallet(user_id)
-        
-        # Credit balance
-        wallet = await self.wallet_repo.credit_balance(wallet["id"], amount)
-
-        # Update transaction status to SUCCESS
+        # Use distributed lock to prevent race conditions
         try:
-            # Re-fetch transaction to check if another process already updated it
-            updated_transaction = await self.transaction_repo.get_by_reference(reference)
-            if updated_transaction and updated_transaction["status"] == TransactionStatus.SUCCESS.value:
-                # Another process already processed this - rollback the credit
-                logger.warning(
-                    f"Transaction {reference} was already processed by another process. "
-                    f"Rolling back credit to prevent double crediting."
-                )
-                # Debit the amount we just credited
-                try:
-                    await self.wallet_repo.debit_balance(wallet["id"], amount)
-                except ValueError as e:
-                    # If debit fails (insufficient balance), log error
-                    logger.error(f"Failed to rollback credit for transaction {reference}: {e}")
+            async with wallet_lock(user_id, "credit"):
+                # Re-check transaction status inside lock (double-check locking pattern)
+                transaction = await self.transaction_repo.get_by_reference(reference)
+                if not transaction:
+                    raise ValueError(f"Transaction not found: {reference}")
                 
-                # Return wallet without the credit
-                return (await self.wallet_repo.get_by_user_id(user_id))
-            
-            # Safe to update transaction status
-            current_payload = transaction.get("raw_payload") or {}
-            if isinstance(current_payload, dict):
-                current_payload["wallet_credited"] = True
-                current_payload["new_balance"] = str(wallet["balance"])
-                current_payload["credited_at"] = transaction.get("updated_at") or transaction.get("created_at")
-            else:
-                current_payload = {
-                    "wallet_credited": True,
-                    "new_balance": str(wallet["balance"])
-                }
-            
-            await self.transaction_repo.update_transaction_status(
-                transaction["id"],
-                TransactionStatus.SUCCESS.value,
-                raw_payload=current_payload
-            )
-            
-            logger.info(f"Wallet credited for transaction {reference}. Amount: {amount}, New balance: {wallet['balance']}")
-            
-        except Exception as e:
-            # If transaction update fails, we've already credited the wallet
-            # Log error but don't fail - the wallet credit is more important
-            logger.error(f"Failed to update transaction status for {reference}: {e}")
-        
-        return wallet
+                # IDEMPOTENCY CHECK: If transaction is already SUCCESS, don't credit again
+                if transaction["status"] == TransactionStatus.SUCCESS.value:
+                    raw_payload = transaction.get("raw_payload") or {}
+                    if isinstance(raw_payload, dict) and raw_payload.get("wallet_credited"):
+                        logger.info(f"Transaction {reference} already processed. Skipping credit.")
+                        wallet = await self.wallet_repo.get_by_user_id(user_id)
+                        if not wallet:
+                            wallet = await self.wallet_repo.get_or_create_wallet(user_id)
+                        return wallet
+                    else:
+                        logger.warning(
+                            f"Transaction {reference} has SUCCESS status but no wallet_credited flag. "
+                            f"Skipping credit to prevent double crediting."
+                        )
+                        wallet = await self.wallet_repo.get_by_user_id(user_id)
+                        if not wallet:
+                            wallet = await self.wallet_repo.get_or_create_wallet(user_id)
+                        return wallet
+                
+                # If transaction is FAILED, don't credit
+                if transaction["status"] == TransactionStatus.FAILED.value:
+                    raise ValueError(f"Transaction {reference} has failed status. Cannot credit wallet.")
+                
+                # Get or create wallet
+                wallet = await self.wallet_repo.get_or_create_wallet(user_id)
+                
+                # Credit balance
+                wallet = await self.wallet_repo.credit_balance(wallet["id"], amount)
+
+                # Update transaction status to SUCCESS
+                try:
+                    current_payload = transaction.get("raw_payload") or {}
+                    if isinstance(current_payload, dict):
+                        current_payload["wallet_credited"] = True
+                        current_payload["new_balance"] = str(wallet["balance"])
+                        current_payload["credited_at"] = transaction.get("updated_at") or transaction.get("created_at")
+                    else:
+                        current_payload = {
+                            "wallet_credited": True,
+                            "new_balance": str(wallet["balance"])
+                        }
+                    
+                    await self.transaction_repo.update_transaction_status(
+                        transaction["id"],
+                        TransactionStatus.SUCCESS.value,
+                        raw_payload=current_payload
+                    )
+                    
+                    logger.info(f"Wallet credited for transaction {reference}. Amount: {amount}, New balance: {wallet['balance']}")
+                    
+                except Exception as e:
+                    logger.error(f"Failed to update transaction status for {reference}: {e}")
+                
+                return wallet
+                
+        except LockAcquisitionError:
+            # Could not acquire lock - another process is handling this
+            logger.warning(f"Could not acquire lock for wallet credit: {reference}")
+            raise ValueError("Wallet operation in progress. Please try again in a moment.")
 
     async def debit_wallet(
         self,

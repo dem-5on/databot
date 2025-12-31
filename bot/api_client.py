@@ -2,19 +2,21 @@
 Bot API client for making authenticated backend requests.
 """
 import hmac
+import time
 import hashlib
 import httpx
 from typing import Optional, Dict, Any
 from app.core.config import settings
 
 
-def generate_signature(user_id: str, platform: str) -> str:
+def generate_signature(user_id: str, platform: str, timestamp: Optional[str] = None) -> str:
     """
     Generate HMAC-SHA256 signature for backend request authentication.
     
     Args:
         user_id: The user identifier (telegram_id or phone)
         platform: The platform ("telegram" or "whatsapp")
+        timestamp: Optional Unix timestamp (added automatically if not provided)
         
     Returns:
         Hex-encoded HMAC signature
@@ -22,7 +24,11 @@ def generate_signature(user_id: str, platform: str) -> str:
     if not settings.BOT_BACKEND_SECRET:
         return "no-secret"
     
-    message = f"{user_id}:{platform}"
+    # Include timestamp in signature for replay protection
+    if timestamp is None:
+        timestamp = str(int(time.time()))
+    
+    message = f"{user_id}:{platform}:{timestamp}"
     signature = hmac.new(
         settings.BOT_BACKEND_SECRET.encode(),
         message.encode(),
@@ -42,10 +48,12 @@ def get_auth_headers(user_id: str, platform: str = "telegram") -> Dict[str, str]
     Returns:
         Dictionary of headers to include in requests
     """
+    timestamp = str(int(time.time()))
     return {
         "X-User-ID": str(user_id),
         "X-Platform": platform,
-        "X-Signature": generate_signature(str(user_id), platform),
+        "X-Timestamp": timestamp,
+        "X-Signature": generate_signature(str(user_id), platform, timestamp),
     }
 
 

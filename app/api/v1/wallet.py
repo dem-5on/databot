@@ -13,6 +13,7 @@ from app.services.paystack_service import PaystackService
 from app.services.referral_service import ReferralService
 from app.core.constants import TransactionType, TransactionStatus
 from app.repository.transaction_repo import TransactionRepository
+from app.utils.security_utils import safe_error_response
 
 logger = logging.getLogger(__name__)
 
@@ -50,14 +51,26 @@ async def init_deposit(
     # Get user - either by user_id (WhatsApp) or telegram_id (Telegram)
     if deposit_data.user_id:
         # WhatsApp: user_id provided directly
+        # SECURITY: Validate that the provided user_id matches the authenticated user
+        if deposit_data.user_id != user.user_id:
+            raise HTTPException(
+                status_code=403,
+                detail="User ID mismatch - you can only initiate deposits for yourself"
+            )
         from app.repository.base_user_repo import BaseUserRepository
         base_user_repo = BaseUserRepository()
-        user = await base_user_repo.get_by_id(deposit_data.user_id)
-        if not user:
+        db_user = await base_user_repo.get_by_id(deposit_data.user_id)
+        if not db_user:
             raise HTTPException(status_code=404, detail="User not found")
     elif deposit_data.telegram_id:
         # Telegram: use UserService for proper multi-table lookup
-        user, _ = await user_service.get_or_create_telegram_user(deposit_data.telegram_id)
+        # SECURITY: Validate that the provided telegram_id matches the authenticated user
+        if deposit_data.telegram_id != user.user_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Telegram ID mismatch - you can only initiate deposits for yourself"
+            )
+        db_user, _ = await user_service.get_or_create_telegram_user(deposit_data.telegram_id)
     else:
         raise HTTPException(status_code=400, detail="Either telegram_id or user_id must be provided")
     
@@ -66,7 +79,7 @@ async def init_deposit(
     
     # Create transaction record
     transaction = await transaction_repo.create_transaction(
-        user_id=user["id"],
+        user_id=db_user["id"],
         transaction_type=TransactionType.DEPOSIT.value,
         amount=deposit_data.amount,
         currency="GHS",
@@ -109,7 +122,8 @@ async def init_deposit(
             TransactionStatus.FAILED.value,
             raw_payload={"error": str(e)}
         )
-        raise HTTPException(status_code=500, detail=f"Failed to initiate charge: {str(e)}")
+        # Use sanitized error message to prevent internal detail leakage
+        raise HTTPException(status_code=500, detail=safe_error_response(e, "initiating deposit"))
 
 
 @router.get("/balance/{identifier}", response_model=BalanceResponseDTO)
@@ -155,7 +169,10 @@ async def get_balance(
 
 
 @router.post("/deposit/confirm")
-async def confirm_deposit(request: DepositConfirmRequest):
+async def confirm_deposit(
+    request: DepositConfirmRequest,
+    user: UserIdentity = Depends(get_user_identity)
+):
     """
     Submit OTP to confirm mobile money deposit.
     """
@@ -167,6 +184,10 @@ async def confirm_deposit(request: DepositConfirmRequest):
     
     if not transaction:
         raise HTTPException(status_code=404, detail="Transaction not found")
+    
+    # SECURITY: Ensure transaction belongs to authenticated user
+    if transaction["user_id"] != user.user_id:
+        raise HTTPException(status_code=403, detail="You can only confirm your own transactions")
     
     if transaction["status"] == TransactionStatus.SUCCESS.value:
         raise HTTPException(status_code=400, detail="Transaction already completed")
@@ -239,11 +260,14 @@ async def confirm_deposit(request: DepositConfirmRequest):
             TransactionStatus.FAILED.value,
             raw_payload={"otp_error": str(e)}
         )
-        raise HTTPException(status_code=400, detail=f"Failed to confirm deposit: {str(e)}")
+        raise HTTPException(status_code=400, detail=safe_error_response(e, "confirming deposit"))
 
 
 @router.post("/deposit/verify/{reference}")
-async def verify_deposit(reference: str):
+async def verify_deposit(
+    reference: str,
+    user: UserIdentity = Depends(get_user_identity)
+):
     """
     Manually verify a deposit transaction by checking Paystack status.
     This is useful if the webhook didn't fire or was missed.
@@ -257,6 +281,10 @@ async def verify_deposit(reference: str):
     
     if not transaction:
         raise HTTPException(status_code=404, detail="Transaction not found")
+
+    # SECURITY: Ensure transaction belongs to authenticated user
+    if transaction["user_id"] != user.user_id:
+        raise HTTPException(status_code=403, detail="You can only verify your own transactions")
     
     # Check if already processed
     if transaction["status"] == TransactionStatus.SUCCESS.value:
@@ -382,4 +410,4 @@ async def verify_deposit(reference: str):
             }
             
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to verify transaction: {str(e)}")
+        raise HTTPException(status_code=500, detail=safe_error_response(e, "verifying transaction"))

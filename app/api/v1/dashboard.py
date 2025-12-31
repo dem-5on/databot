@@ -4,11 +4,13 @@ from decimal import Decimal
 from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException, Depends, Query
 from app.core.auth import verify_dashboard_token
+from app.core.config import settings
 from app.repository.base_user_repo import BaseUserRepository
 from app.repository.transaction_repo import TransactionRepository
 from app.repository.order_repo import OrderRepository
 from app.repository.bundle_repo import BundleRepository
 from app.repository.wallet_repo import WalletRepository
+from app.utils.security_utils import safe_error_response, validate_uuid_format
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -437,19 +439,49 @@ async def manual_credit_user(
 ):
     """
     Manually credit a user's wallet.
+    
+    Business Logic Limits:
+    - Maximum single credit amount enforced via MAX_MANUAL_CREDIT_AMOUNT
+    - User must exist before crediting
+    - Reason is required for audit trail
     """
     from app.services.wallet_service import WalletService
     
+    # SECURITY: Validate amount limits to prevent business logic abuse
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be positive")
+    
+    max_amount = getattr(settings, 'MAX_MANUAL_CREDIT_AMOUNT', 10000.0)
+    if amount > max_amount:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Amount exceeds maximum allowed credit of GHS {max_amount}"
+        )
+    
+    # Validate reason is provided
+    if not reason or len(reason.strip()) < 5:
+        raise HTTPException(status_code=400, detail="A valid reason (min 5 chars) is required for audit")
+    
+    # SECURITY: Validate user_id format (prevent injection)
+    try:
+        validate_uuid_format(user_id, "User ID")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    # SECURITY: Verify user exists before crediting
+    user_repo = BaseUserRepository()
+    user = await user_repo.get_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
     wallet_service = WalletService()
     try:
-        # We'll create a manual transaction record first
         transaction_repo = TransactionRepository()
-        from decimal import Decimal
         import uuid
         
         reference = f"MAN-{uuid.uuid4().hex[:8].upper()}"
         
-        # Create transaction
+        # Create transaction with audit info
         await transaction_repo.create_transaction(
             user_id=user_id,
             transaction_type="deposit",
@@ -458,11 +490,20 @@ async def manual_credit_user(
             reference=reference,
             status="completed",
             provider="admin_manual",
-            raw_payload={"reason": reason, "type": "manual_credit"}
+            raw_payload={
+                "reason": reason.strip(), 
+                "type": "manual_credit",
+                "credited_at": datetime.utcnow().isoformat()
+            }
         )
         
-        # Update wallet balance
-        new_wallet = await wallet_service.credit_wallet(user_id, Decimal(str(amount)))
+        # Update wallet balance - use direct credit without reference check
+        # since we just created the transaction
+        wallet_repo = WalletRepository()
+        wallet = await wallet_repo.get_or_create_wallet(user_id)
+        new_wallet = await wallet_repo.credit_balance(wallet["id"], Decimal(str(amount)))
+        
+        logger.info(f"Manual credit: user={user_id}, amount={amount}, reason={reason[:50]}")
         
         return {
             "status": "success", 
@@ -470,8 +511,8 @@ async def manual_credit_user(
             "wallet": new_wallet
         }
     except Exception as e:
-        logger.error(f"Error manually crediting user {user_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to credit user: {str(e)}")
+        logger.error(f"Error manually crediting user: {type(e).__name__}")
+        raise HTTPException(status_code=500, detail=safe_error_response(e, "crediting user"))
 
 
 @router.get("/revenue-chart")

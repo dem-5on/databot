@@ -1,8 +1,12 @@
-from typing import List
+from typing import List, Literal
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
 
 
 class Settings(BaseSettings):
+    # Environment (development or production)
+    ENVIRONMENT: Literal["development", "production"] = "development"
+    
     # Supabase - Required for database operations via REST API
     SUPABASE_URL: str
     SUPABASE_KEY: str
@@ -59,6 +63,9 @@ class Settings(BaseSettings):
     ADMIN_API_KEYS: str = ""  # Comma-separated list of admin API keys
     DASHBOARD_TOKEN: str = ""  # 64-character token for monitoring dashboard access
 
+    # Business Logic Limits
+    MAX_MANUAL_CREDIT_AMOUNT: float = 10000.0  # Maximum amount that can be manually credited at once
+
     # HTTP Connection Pool Settings
     MAX_KEEPALIVE_CONNECTIONS: int = 20
     MAX_CONNECTIONS: int = 100
@@ -74,6 +81,45 @@ class Settings(BaseSettings):
         env_file = ".env"
         case_sensitive = True
 
+    @field_validator('ENVIRONMENT')
+    @classmethod
+    def validate_environment(cls, v):
+        """Validate environment is a known value."""
+        if v.lower() not in ('development', 'production'):
+            raise ValueError("ENVIRONMENT must be 'development' or 'production'")
+        return v.lower()
+
+    def validate_production_settings(self) -> List[str]:
+        """
+        Validate that required security settings are configured for production.
+        
+        Returns:
+            List of missing/invalid settings (empty if all valid)
+        """
+        errors = []
+        
+        if self.ENVIRONMENT == "production":
+            if not self.BOT_BACKEND_SECRET:
+                errors.append("BOT_BACKEND_SECRET is required in production")
+            elif len(self.BOT_BACKEND_SECRET) < 32:
+                errors.append("BOT_BACKEND_SECRET should be at least 32 characters")
+            
+            if not self.ADMIN_API_KEYS:
+                errors.append("ADMIN_API_KEYS is required in production")
+            
+            if not self.DASHBOARD_TOKEN:
+                errors.append("DASHBOARD_TOKEN is required in production")
+            elif len(self.DASHBOARD_TOKEN) < 32:
+                errors.append("DASHBOARD_TOKEN should be at least 32 characters")
+            
+            if not self.TELEGRAM_WEBHOOK_URL and self.TELEGRAM_USE_WEBHOOK:
+                errors.append("TELEGRAM_WEBHOOK_URL is required when TELEGRAM_USE_WEBHOOK is true in production")
+            
+            if "*" in self.ALLOWED_ORIGINS:
+                errors.append("ALLOWED_ORIGINS should not contain '*' in production")
+        
+        return errors
+
     @property
     def admin_ids_list(self) -> List[int]:
         """Parse comma-separated admin IDs into list of integers."""
@@ -87,6 +133,12 @@ class Settings(BaseSettings):
         if not self.WHATSAPP_ADMIN_NUMBERS:
             return []
         return [num.strip() for num in self.WHATSAPP_ADMIN_NUMBERS.split(",") if num.strip()]
+    
+    @property
+    def is_production(self) -> bool:
+        """Check if running in production environment."""
+        return self.ENVIRONMENT == "production"
 
 
 settings = Settings()
+

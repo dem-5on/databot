@@ -26,6 +26,8 @@ from app.api.v1.webhooks.telegram_webhook import router as telegram_webhook_rout
 from app.api.v1.dashboard import router as dashboard_router
 from app.api.v1.system import router as system_router
 from app.api.v1.health import router as health_router
+from app.tasks.health_monitor import monitor_health_task
+import asyncio
 
 # ... imports end ...
 
@@ -61,7 +63,20 @@ async def lifespan(app: FastAPI):
         logger.error(error_msg)
         raise RuntimeError(error_msg)
     
-    logger.info("✅ Environment validation passed")
+    # SECURITY: Validate production security settings
+    security_errors = settings.validate_production_settings()
+    if security_errors:
+        error_msg = (
+            f"SECURITY: Production security validation failed:\n"
+            f"  - " + "\n  - ".join(security_errors)
+        )
+        logger.error(error_msg)
+        if settings.is_production:
+            raise RuntimeError(error_msg)
+        else:
+            logger.warning("Continuing in development mode despite security warnings")
+    
+    logger.info(f"✅ Environment validation passed (mode: {settings.ENVIRONMENT})")
     
     # Note: Bundle syncs are handled by Celery Beat (scheduled tasks)
     # To trigger a manual sync: from app.tasks import sync_bundles_task; sync_bundles_task.delay()
@@ -100,7 +115,17 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("Telegram webhook mode disabled - run bot separately with: python -m bot.telegram_bot")
     
+    # Start background tasks
+    health_task = asyncio.create_task(monitor_health_task())
+    
     yield
+    
+    # Cancel background tasks
+    health_task.cancel()
+    try:
+        await health_task
+    except asyncio.CancelledError:
+        pass
 
     # Clean up Telegram bot if webhook mode was enabled
     if settings.TELEGRAM_USE_WEBHOOK:

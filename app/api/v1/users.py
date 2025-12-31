@@ -201,10 +201,19 @@ async def debug_full_user_data(
 ):
     """
     Comprehensive debug endpoint to diagnose why transactions/orders aren't showing.
+    
+    SECURITY: This endpoint is only available in development environment.
     """
+    # SECURITY: Restrict to development environment only
+    if settings.is_production:
+        raise HTTPException(
+            status_code=403,
+            detail="Debug endpoint is not available in production"
+        )
+    
     from app.db.supabase_client import supabase
     
-    logger.info(f"FULL DEBUG: identifier={identifier}, type={identifier_type}")
+    logger.info(f"FULL DEBUG: identifier_type={identifier_type}")
     
     user_service = UserService()
     

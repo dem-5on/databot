@@ -1,4 +1,5 @@
-from fastapi import APIRouter, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, Depends
+from app.core.auth import verify_admin_access
 from app.services.bundle_sync import BundleSyncService
 from app.services.paystack_service import PaystackService
 from app.services.blessdatahub_client import BlessdatahubClient
@@ -9,7 +10,8 @@ router = APIRouter()
 @router.post("/sync-bundles")
 async def sync_bundles(
     background_tasks: BackgroundTasks,
-    networks: list[str] = None
+    networks: list[str] = None,
+    _: str = Depends(verify_admin_access)
 ):
     """
     Trigger bundle synchronization.
