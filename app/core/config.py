@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     DASHBOARD_TOKEN: str = ""  # 64-character token for monitoring dashboard access
 
     # Business Logic Limits
-    MAX_MANUAL_CREDIT_AMOUNT: float = 10000.0  # Maximum amount that can be manually credited at once
+    MAX_MANUAL_CREDIT_AMOUNT: float = 1000.0  # Maximum amount that can be manually credited at once
 
     # HTTP Connection Pool Settings
     MAX_KEEPALIVE_CONNECTIONS: int = 20
@@ -74,8 +74,8 @@ class Settings(BaseSettings):
     UVICORN_WORKERS: int
 
     # Celery Configuration
-    CELERY_BROKER_URL: str = "redis://localhost:6379/0"
-    CELERY_RESULT_BACKEND: str = "redis://localhost:6379/0"
+    CELERY_BROKER_URL: str = ""
+    CELERY_RESULT_BACKEND: str = ""
 
     class Config:
         env_file = ".env"

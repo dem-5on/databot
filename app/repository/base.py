@@ -30,8 +30,9 @@ class BaseRepository:
             response = await self.client.table(self.table_name).insert(data).execute()
             if not response.data:
                 raise ValueError(f"Failed to create record in {self.table_name}")
-            logger.info(f"Created record in {self.table_name}: {data.get('id', 'N/A')}")
-            return response.data[0]
+            created_record = response.data[0]
+            logger.info(f"Created record in {self.table_name}: {created_record.get('id', 'N/A')}")
+            return created_record
         except APIError as e:
             logger.error(f"API error creating record in {self.table_name}: {str(e)}")
             raise ValueError(f"Failed to create record in {self.table_name}: {str(e)}")
@@ -212,9 +213,10 @@ class BaseRepository:
             
             if not response.data:
                 raise ValueError(f"Failed to upsert record in {self.table_name}")
-                
-            logger.info(f"Upserted record in {self.table_name}: {data.get('id', 'N/A')}")
-            return response.data[0]
+            
+            upserted_record = response.data[0]
+            logger.info(f"Upserted record in {self.table_name}: {upserted_record.get('id', 'N/A')}")
+            return upserted_record
             
         except APIError as e:
             logger.error(f"API error upserting record in {self.table_name}: {str(e)}")
