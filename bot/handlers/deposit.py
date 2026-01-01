@@ -56,10 +56,15 @@ async def deposit_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def deposit_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle amount input."""
     try:
+        # Get dynamic minimum deposit
+        from app.services.settings_service import SettingsService
+        settings_service = SettingsService()
+        min_deposit = await settings_service.get_min_deposit_amount()
+
         amount = Decimal(update.message.text.strip())
-        if amount < settings.MINIMUM_DEPOSIT_AMOUNT:
+        if amount < min_deposit:
             await update.message.reply_text(
-                f"❌ Minimum deposit amount is GHS {settings.MINIMUM_DEPOSIT_AMOUNT}. Please enter a valid amount:"
+                f"❌ Minimum deposit amount is GHS {min_deposit}. Please enter a valid amount:"
             )
             return AMOUNT
         

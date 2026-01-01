@@ -22,11 +22,16 @@ class ReferralService:
 
     def __init__(self):
         from app.core.config import settings
-        self.REFERRAL_BONUS_AMOUNT = Decimal(str(settings.REFERRAL_BONUS_AMOUNT))
+        # self.REFERRAL_BONUS_AMOUNT = Decimal(str(settings.REFERRAL_BONUS_AMOUNT)) # Use dynamic getter instead
         self.user_repo = UserRepository()
         self.referral_repo = ReferralRepository()
         self.transaction_repo = TransactionRepository()
         self.wallet_service = WalletService()
+
+    async def get_referral_bonus_amount(self) -> Decimal:
+        """Get current referral bonus amount from settings."""
+        from app.services.settings_service import SettingsService
+        return Decimal(str(await SettingsService().get_referral_bonus_amount()))
 
     @staticmethod
     def generate_referral_code() -> str:
@@ -99,11 +104,14 @@ class ReferralService:
         # Register referral
         await self.user_repo.update_user(referred_user_id, referred_by=referrer["id"])
         
+        # Get dynamic bonus amount
+        bonus_amount = await self.get_referral_bonus_amount()
+
         await self.referral_repo.create_referral(
             referrer_id=referrer["id"],
             referred_id=referred_user_id,
             referral_code=referral_code,
-            bonus_amount=str(self.REFERRAL_BONUS_AMOUNT)
+            bonus_amount=str(bonus_amount)
         )
         
         return True
@@ -150,11 +158,14 @@ class ReferralService:
             referrer_id = referral["referrer_id"]
             bonus_reference = f"REF-{uuid.uuid4()}"
             
+            # Get dynamic bonus amount (use current setting)
+            bonus_amount = await self.get_referral_bonus_amount()
+
             # Create transaction record for referral bonus
             await self.transaction_repo.create_transaction(
                 user_id=referrer_id,
                 transaction_type=TransactionType.REFERRAL_BONUS.value,
-                amount=self.REFERRAL_BONUS_AMOUNT,
+                amount=bonus_amount,
                 currency="GHS",
                 reference=bonus_reference,
                 status=TransactionStatus.SUCCESS.value,
@@ -167,7 +178,7 @@ class ReferralService:
             # Credit referrer's wallet
             await self.wallet_service.credit_wallet(
                 user_id=referrer_id,
-                amount=self.REFERRAL_BONUS_AMOUNT,
+                amount=bonus_amount,
                 reference=bonus_reference
             )
             
@@ -182,7 +193,7 @@ class ReferralService:
                     await NotifierService.send_user_message(
                         telegram_id=int(referrer["telegram_id"]),
                         text=f"🎉 <b>Referral Bonus Earned!</b>\n\n"
-                             f"You've earned GHS {self.REFERRAL_BONUS_AMOUNT} "
+                             f"You've earned GHS {bonus_amount} "
                              f"because someone you referred completed their first transaction!\n"
                              f"The bonus has been added to your wallet balance."
                     )

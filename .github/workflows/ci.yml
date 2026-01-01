@@ -125,3 +125,36 @@ jobs:
           CELERY_BROKER_URL: redis://localhost:6379/0
           CELERY_RESULT_BACKEND: redis://localhost:6379/0
         run: pytest -v --tb=short
+
+  deploy:
+    name: Deploy to EC2
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          script: |
+            # Navigate to project directory (update this path if different)
+            cd ~/databot
+
+            # Pull latest changes
+            git pull origin main
+
+            # Rebuild and restart containers
+            # Using docker compose (v2) or docker-compose (v1) depending on availability
+            if command -v docker-compose &> /dev/null; then
+                docker-compose down
+                docker-compose up -d --build --remove-orphans
+            else
+                docker compose down
+                docker compose up -d --build --remove-orphans
+            fi
+
+            # Prune unused images to save space
+            docker image prune -f

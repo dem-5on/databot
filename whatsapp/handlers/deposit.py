@@ -142,10 +142,16 @@ async def handle_amount(phone_number: str, amount_text: str, bot) -> None:
         # Validate amount
         try:
             amount = Decimal(amount_text.strip())
-            if amount < settings.MINIMUM_DEPOSIT_AMOUNT:
+            
+            # Get dynamic minimum deposit
+            from app.services.settings_service import SettingsService
+            settings_service = SettingsService()
+            min_deposit = await settings_service.get_min_deposit_amount()
+            
+            if amount < min_deposit:
                 await notifier.send_interactive_message(
                     normalized_phone,
-                    f"❌ Minimum deposit amount is GHS {settings.MINIMUM_DEPOSIT_AMOUNT}. Please enter a valid amount:",
+                    f"❌ Minimum deposit amount is GHS {min_deposit}. Please enter a valid amount:",
                     get_back_cancel_buttons()
                 )
                 return
