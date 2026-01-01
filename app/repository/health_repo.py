@@ -1,5 +1,5 @@
 from app.repository.base import BaseRepository
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ class HealthLogRepository(BaseRepository):
     async def get_uptime_percentage(self, service_name: str, days: int = 30) -> float:
         """Calculate uptime percentage for the last N days."""
         try:
-            start_date = (datetime.utcnow() - timedelta(days=days)).isoformat()
+            start_date = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
             
             # Since Supabase-py doesn't support complex aggregation easily via simple client,
             # we will fetch relevant logs. 

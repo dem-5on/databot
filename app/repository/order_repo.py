@@ -47,6 +47,7 @@ class OrderRepository(BaseRepository):
         phone: str,
         price: Decimal,
         status: str = "pending",
+        delivery_status: str = "pending",
         vendor_reference: Optional[str] = None,
         vendor_response: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
@@ -59,6 +60,7 @@ class OrderRepository(BaseRepository):
             phone: Phone number to receive the bundle
             price: Order price
             status: Order status (default: "pending")
+            delivery_status: Delivery status (default: "pending")
             vendor_reference: Optional vendor reference number
             vendor_response: Optional raw response from vendor
             
@@ -75,6 +77,7 @@ class OrderRepository(BaseRepository):
             "phone": phone,
             "price": str(price),
             "status": status,
+            "delivery_status": delivery_status,
             "vendor_reference": vendor_reference,
             "vendor_response": vendor_response,
             "created_at": datetime.utcnow().isoformat(),
@@ -93,6 +96,7 @@ class OrderRepository(BaseRepository):
         self,
         order_id: str,
         status: str,
+        delivery_status: Optional[str] = None,
         vendor_reference: Optional[str] = None,
         vendor_response: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
@@ -102,6 +106,7 @@ class OrderRepository(BaseRepository):
         Args:
             order_id: The order ID
             status: New status
+            delivery_status: Optional new delivery status
             vendor_reference: Optional vendor reference number
             vendor_response: Optional updated vendor response
             
@@ -115,6 +120,8 @@ class OrderRepository(BaseRepository):
             "status": status,
             "updated_at": datetime.utcnow().isoformat()
         }
+        if delivery_status:
+            update_data["delivery_status"] = delivery_status
         if vendor_reference:
             update_data["vendor_reference"] = vendor_reference
         if vendor_response:

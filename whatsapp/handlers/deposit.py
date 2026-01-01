@@ -6,6 +6,7 @@ from app.core.config import settings
 from app.services.whatsapp_notifier import WhatsAppNotifierService
 from whatsapp.keyboard import get_back_cancel_buttons
 from app.utils.phone_utils import normalize_phone_number
+from app.utils.backend_client import BackendAPIClient
 
 logger = logging.getLogger(__name__)
 
@@ -288,54 +289,64 @@ async def handle_phone(phone_number: str, phone_input: str, bot) -> None:
             "AIRTELTIGO": "AirtelTigo"
         }
         
-        # Call backend API to initialize deposit
+        # Call backend API to initialize deposit with retry logic
         try:
-            async with httpx.AsyncClient() as client:
-                logger.info(f"Initializing deposit: user_id={user['id']}, amount={amount}, phone={normalized_momo_phone}, provider={network}")
-                
-                response = await client.post(
-                    f"{settings.BACKEND_API_URL}/api/v1/wallet/deposit/init",
-                    json={
-                        "user_id": str(user["id"]),  # Pass user_id directly for WhatsApp
-                        "amount": float(amount),
-                        "phone": normalized_momo_phone,
-                        "provider": network
-                    },
-                    timeout=30.0
-                )
-                response.raise_for_status()
-                data = response.json()
-                
-                logger.info(f"Deposit init response: {data}")
-                
-                # Get display_text from nested response structure
-                paystack_response = data.get("paystack_response", {})
-                paystack_data = paystack_response.get("data", {})
-                display_text = paystack_data.get("display_text") or data.get("display_text") or "Please approve the mobile money prompt on your phone."
-                reference = data.get('reference', 'N/A')
-                
-                if not reference or reference == 'N/A':
-                    logger.error(f"Missing reference in deposit init response: {data}")
-                    raise ValueError("Failed to get transaction reference from server")
-                
-                # Store reference and move to OTP state
-                bot.update_user_state_data(normalized_phone, deposit_reference=reference)
-                bot.set_user_state(normalized_phone, bot.STATE_DEPOSIT_OTP)
-                
-                await notifier.send_interactive_message(
-                    normalized_phone,
-                    (
-                        f"✅ Deposit Initiated\n\n"
-                        f"Detected Network: {network_display.get(network, network)}\n"
-                        f"Amount: GHS {amount}\n"
-                        f"Phone: {normalized_momo_phone}\n\n"
-                        f"{display_text}\n\n"
-                        f"OR\n"
-                        f"Go to my approvals on your mobile device to approve the payment.\n\n"
-                        f"Please enter the OTP sent to your phone."
-                    ),
-                    get_back_cancel_buttons()
-                )
+            logger.info(f"Initializing deposit: user_id={user['id']}, amount={amount}, phone={normalized_momo_phone}, provider={network}")
+            
+            max_retries = 2
+            for attempt in range(max_retries + 1):
+                try:
+                    client = BackendAPIClient.get_client()
+                    response = await client.post(
+                        f"{settings.BACKEND_API_URL}/api/v1/wallet/deposit/init",
+                        json={
+                            "user_id": str(user["id"]),  # Pass user_id directly for WhatsApp
+                            "amount": float(amount),
+                            "phone": normalized_momo_phone,
+                            "provider": network
+                        },
+                    )
+                    response.raise_for_status()
+                    break  # Success
+                except (httpx.RemoteProtocolError, httpx.ConnectError) as conn_error:
+                    if attempt < max_retries:
+                        logger.warning(f"Connection error (attempt {attempt + 1}/{max_retries + 1}), resetting client")
+                        await BackendAPIClient.reset_client()
+                    else:
+                        raise
+            
+            data = response.json()
+            
+            logger.info(f"Deposit init response: {data}")
+            
+            # Get display_text from nested response structure
+            paystack_response = data.get("paystack_response", {})
+            paystack_data = paystack_response.get("data", {})
+            display_text = paystack_data.get("display_text") or data.get("display_text") or "Please approve the mobile money prompt on your phone."
+            reference = data.get('reference', 'N/A')
+            
+            if not reference or reference == 'N/A':
+                logger.error(f"Missing reference in deposit init response: {data}")
+                raise ValueError("Failed to get transaction reference from server")
+            
+            # Store reference and move to OTP state
+            bot.update_user_state_data(normalized_phone, deposit_reference=reference)
+            bot.set_user_state(normalized_phone, bot.STATE_DEPOSIT_OTP)
+            
+            await notifier.send_interactive_message(
+                normalized_phone,
+                (
+                    f"✅ Deposit Initiated\n\n"
+                    f"Detected Network: {network_display.get(network, network)}\n"
+                    f"Amount: GHS {amount}\n"
+                    f"Phone: {normalized_momo_phone}\n\n"
+                    f"{display_text}\n\n"
+                    f"OR\n"
+                    f"Go to my approvals on your mobile device to approve the payment.\n\n"
+                    f"Please enter the OTP sent to your phone."
+                ),
+                get_back_cancel_buttons()
+            )
                 
         except httpx.HTTPStatusError as e:
             error_msg = "Unknown error"
@@ -392,136 +403,146 @@ async def handle_otp(phone_number: str, otp: str, bot) -> None:
             bot.clear_user_state(normalized_phone)
             return
         
-        # Submit OTP to backend
+        # Submit OTP to backend with retry logic
         try:
-            async with httpx.AsyncClient() as client:
-                logger.info(f"Submitting OTP for reference: {reference}")
-                
-                response = await client.post(
-                    f"{settings.BACKEND_API_URL}/api/v1/wallet/deposit/confirm",
-                    json={
-                        "reference": reference,
-                        "otp": otp.strip()
-                    },
-                    timeout=30.0
+            logger.info(f"Submitting OTP for reference: {reference}")
+            
+            max_retries = 2
+            for attempt in range(max_retries + 1):
+                try:
+                    client = BackendAPIClient.get_client()
+                    response = await client.post(
+                        f"{settings.BACKEND_API_URL}/api/v1/wallet/deposit/confirm",
+                        json={
+                            "reference": reference,
+                            "otp": otp.strip()
+                        },
+                    )
+                    response.raise_for_status()
+                    break  # Success
+                except (httpx.RemoteProtocolError, httpx.ConnectError) as conn_error:
+                    if attempt < max_retries:
+                        logger.warning(f"Connection error (attempt {attempt + 1}/{max_retries + 1}), resetting client")
+                        await BackendAPIClient.reset_client()
+                    else:
+                        raise
+            
+            data = response.json()
+            
+            logger.info(f"OTP submission response: {data}")
+            
+            if data.get("status") == "success":
+                # Payment successful immediately
+                await bot.send_main_menu(
+                    normalized_phone,
+                    f"✅ {data.get('message', 'Deposit successful! Your wallet has been credited.')}"
                 )
-                response.raise_for_status()
-                data = response.json()
+                bot.clear_user_state(normalized_phone)
+                return
+            else:
+                # OTP submitted but payment pending - verify immediately
+                await notifier.send_text_message(
+                    normalized_phone,
+                    "⏳ OTP submitted. Verifying payment status..."
+                )
                 
-                logger.info(f"OTP submission response: {data}")
+                # Wait a moment for Paystack to process
+                await asyncio.sleep(2)
                 
-                if data.get("status") == "success":
-                    # Payment successful immediately
-                    await bot.send_main_menu(
-                        normalized_phone,
-                        f"✅ {data.get('message', 'Deposit successful! Your wallet has been credited.')}"
+                # Try to verify the transaction
+                try:
+                    logger.info(f"Verifying transaction: {reference}")
+                    client = BackendAPIClient.get_client()
+                    verify_response = await client.post(
+                        f"{settings.BACKEND_API_URL}/api/v1/wallet/deposit/verify/{reference}",
                     )
-                    bot.clear_user_state(normalized_phone)
-                    return
-                else:
-                    # OTP submitted but payment pending - verify immediately
-                    await notifier.send_text_message(
-                        normalized_phone,
-                        "⏳ OTP submitted. Verifying payment status..."
-                    )
+                    verify_response.raise_for_status()
+                    verify_data = verify_response.json()
                     
-                    # Wait a moment for Paystack to process
-                    await asyncio.sleep(2)
+                    logger.info(f"Verification response: {verify_data}")
                     
-                    # Try to verify the transaction
-                    try:
-                        logger.info(f"Verifying transaction: {reference}")
-                        verify_response = await client.post(
-                            f"{settings.BACKEND_API_URL}/api/v1/wallet/deposit/verify/{reference}",
-                            timeout=30.0
+                    if verify_data.get("status") == "success":
+                        # Get balance info if available
+                        transaction = verify_data.get("transaction", {})
+                        wallet_info = ""
+                        if transaction:
+                            raw_payload = transaction.get("raw_payload", {})
+                            if isinstance(raw_payload, dict):
+                                new_balance = raw_payload.get("new_balance")
+                                if new_balance:
+                                    wallet_info = f"\n\n💰 New Balance: GHS {new_balance}"
+                        
+                        await bot.send_main_menu(
+                            normalized_phone,
+                            f"✅ Deposit verified and wallet credited!{wallet_info}\n\nYour wallet has been updated with the deposit amount."
                         )
-                        verify_response.raise_for_status()
-                        verify_data = verify_response.json()
+                    elif verify_data.get("status") == "pending":
+                        # Still pending - check again after a short delay
+                        await asyncio.sleep(3)
                         
-                        logger.info(f"Verification response: {verify_data}")
-                        
-                        if verify_data.get("status") == "success":
-                            # Get balance info if available
-                            transaction = verify_data.get("transaction", {})
-                            wallet_info = ""
-                            if transaction:
-                                raw_payload = transaction.get("raw_payload", {})
-                                if isinstance(raw_payload, dict):
-                                    new_balance = raw_payload.get("new_balance")
-                                    if new_balance:
-                                        wallet_info = f"\n\n💰 New Balance: GHS {new_balance}"
-                            
-                            await bot.send_main_menu(
-                                normalized_phone,
-                                f"✅ Deposit verified and wallet credited!{wallet_info}\n\nYour wallet has been updated with the deposit amount."
+                        # Second verification attempt
+                        try:
+                            client = BackendAPIClient.get_client()
+                            verify_response2 = await client.post(
+                                f"{settings.BACKEND_API_URL}/api/v1/wallet/deposit/verify/{reference}",
                             )
-                        elif verify_data.get("status") == "pending":
-                            # Still pending - check again after a short delay
-                            await asyncio.sleep(3)
+                            verify_response2.raise_for_status()
+                            verify_data2 = verify_response2.json()
                             
-                            # Second verification attempt
-                            try:
-                                verify_response2 = await client.post(
-                                    f"{settings.BACKEND_API_URL}/api/v1/wallet/deposit/verify/{reference}",
-                                    timeout=30.0
-                                )
-                                verify_response2.raise_for_status()
-                                verify_data2 = verify_response2.json()
+                            if verify_data2.get("status") == "success":
+                                transaction = verify_data2.get("transaction", {})
+                                wallet_info = ""
+                                if transaction:
+                                    raw_payload = transaction.get("raw_payload", {})
+                                    if isinstance(raw_payload, dict):
+                                        new_balance = raw_payload.get("new_balance")
+                                        if new_balance:
+                                            wallet_info = f"\n\n💰 New Balance: GHS {new_balance}"
                                 
-                                if verify_data2.get("status") == "success":
-                                    transaction = verify_data2.get("transaction", {})
-                                    wallet_info = ""
-                                    if transaction:
-                                        raw_payload = transaction.get("raw_payload", {})
-                                        if isinstance(raw_payload, dict):
-                                            new_balance = raw_payload.get("new_balance")
-                                            if new_balance:
-                                                wallet_info = f"\n\n💰 New Balance: GHS {new_balance}"
-                                    
-                                    await bot.send_main_menu(
-                                        normalized_phone,
-                                        f"✅ Payment verified! Your wallet has been credited.{wallet_info}"
-                                    )
-                                else:
-                                    await bot.send_main_menu(
-                                        normalized_phone,
-                                        (
-                                            "⏳ Payment is still being processed.\n\n"
-                                            "If your payment was successful, your wallet will be credited shortly.\n"
-                                            "You can check your balance using the 💼 Balance button."
-                                        )
-                                    )
-                            except Exception:
+                                await bot.send_main_menu(
+                                    normalized_phone,
+                                    f"✅ Payment verified! Your wallet has been credited.{wallet_info}"
+                                )
+                            else:
                                 await bot.send_main_menu(
                                     normalized_phone,
                                     (
-                                        "⏳ Payment is being processed.\n\n"
+                                        "⏳ Payment is still being processed.\n\n"
                                         "If your payment was successful, your wallet will be credited shortly.\n"
                                         "You can check your balance using the 💼 Balance button."
                                     )
                                 )
-                        else:
+                        except Exception:
                             await bot.send_main_menu(
                                 normalized_phone,
                                 (
-                                    f"⚠️ Payment status: {verify_data.get('paystack_status', 'unknown')}\n\n"
-                                    "Please check your balance. If the payment was successful but balance wasn't updated, "
-                                    "please contact support."
+                                    "⏳ Payment is being processed.\n\n"
+                                    "If your payment was successful, your wallet will be credited shortly.\n"
+                                    "You can check your balance using the 💼 Balance button."
                                 )
                             )
-                    except Exception as verify_error:
-                        logger.error(f"Verification error: {verify_error}", exc_info=True)
+                    else:
                         await bot.send_main_menu(
                             normalized_phone,
                             (
-                                "⏳ OTP submitted successfully.\n\n"
-                                "Payment is being processed. If your payment was successful, "
-                                "your wallet will be credited shortly via webhook.\n\n"
-                                "You can check your balance using the 💼 Balance button."
+                                f"⚠️ Payment status: {verify_data.get('paystack_status', 'unknown')}\n\n"
+                                "Please check your balance. If the payment was successful but balance wasn't updated, "
+                                "please contact support."
                             )
                         )
-                
-                bot.clear_user_state(normalized_phone)
+                except Exception as verify_error:
+                    logger.error(f"Verification error: {verify_error}", exc_info=True)
+                    await bot.send_main_menu(
+                        normalized_phone,
+                        (
+                            "⏳ OTP submitted successfully.\n\n"
+                            "Payment is being processed. If your payment was successful, "
+                            "your wallet will be credited shortly via webhook.\n\n"
+                            "You can check your balance using the 💼 Balance button."
+                        )
+                    )
+            
+            bot.clear_user_state(normalized_phone)
                 
         except httpx.HTTPStatusError as e:
             error_msg = "Unknown error"

@@ -323,19 +323,40 @@ async def handle_phone(phone_number: str, phone_input: str, bot) -> None:
         
         # Create order via backend API
         try:
-            client = BackendAPIClient.get_client()
             logger.info(f"Creating order: user_id={user['id']}, bundle_id={selected_bundle['id']}, phone={normalized_bundle_phone}")
             
-            response = await client.post(
-                f"{settings.BACKEND_API_URL}/api/v1/orders",
-                json={
-                    "user_id": str(user["id"]),  # Pass user_id directly for WhatsApp
-                    "bundle_id": selected_bundle["id"],
-                    "phone": normalized_bundle_phone
-                },
-                timeout=30.0
+            # Get authentication headers
+            auth_headers = BackendAPIClient.get_auth_headers(
+                user_id=normalized_phone,  # WhatsApp user identifier
+                platform="whatsapp"
             )
-            response.raise_for_status()
+            
+            # Retry logic for connection errors
+            max_retries = 2
+            last_error = None
+            
+            for attempt in range(max_retries + 1):
+                try:
+                    client = BackendAPIClient.get_client()
+                    response = await client.post(
+                        f"{settings.BACKEND_API_URL}/api/v1/orders",
+                        json={
+                            "user_id": str(user["id"]),  # Pass user_id directly for WhatsApp
+                            "bundle_id": selected_bundle["id"],
+                            "phone": normalized_bundle_phone
+                        },
+                        headers=auth_headers,
+                    )
+                    response.raise_for_status()
+                    break  # Success, exit retry loop
+                except (httpx.RemoteProtocolError, httpx.ConnectError) as conn_error:
+                    last_error = conn_error
+                    if attempt < max_retries:
+                        logger.warning(f"Connection error (attempt {attempt + 1}/{max_retries + 1}), resetting client: {conn_error}")
+                        await BackendAPIClient.reset_client()
+                    else:
+                        raise
+            
             data = response.json()
                 
             logger.info(f"Order creation response: {data}")

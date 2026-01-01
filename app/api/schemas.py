@@ -8,7 +8,7 @@ and prevent accidental exposure of internal fields.
 from decimal import Decimal
 from datetime import datetime
 from typing import Optional, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class BalanceResponseDTO(BaseModel):
@@ -20,16 +20,15 @@ class BalanceResponseDTO(BaseModel):
     balance: str = Field(..., description="Current wallet balance")
     currency: str = Field(default="GHS", description="Currency code")
     
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "user_id": "550e8400-e29b-41d4-a716-446655440000",
-                "telegram_id": "123456789",
-                "phone": "233123456789",
-                "balance": "50.00",
-                "currency": "GHS"
-            }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "user_id": "550e8400-e29b-41d4-a716-446655440000",
+            "telegram_id": "123456789",
+            "phone": "233123456789",
+            "balance": "50.00",
+            "currency": "GHS"
         }
+    })
 
 
 class TransactionHistoryItemDTO(BaseModel):
@@ -52,6 +51,7 @@ class OrderHistoryItemDTO(BaseModel):
     phone: str = Field(..., description="Phone number data was sent to")
     price: str
     status: str
+    delivery_status: str = Field(..., description="Vendor delivery status")
     vendor_reference: Optional[str] = None
     created_at: Optional[str] = None
 
@@ -63,34 +63,33 @@ class UserHistoryResponseDTO(BaseModel):
     transactions: List[TransactionHistoryItemDTO] = Field(default_factory=list)
     orders: List[OrderHistoryItemDTO] = Field(default_factory=list)
     
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "user_id": "550e8400-e29b-41d4-a716-446655440000",
-                "transactions": [
-                    {
-                        "id": "1",
-                        "type": "deposit",
-                        "amount": "50.00",
-                        "currency": "GHS",
-                        "status": "success",
-                        "reference": "DEP-123",
-                        "created_at": "2025-12-30T01:00:00Z"
-                    }
-                ],
-                "orders": [
-                    {
-                        "id": "1",
-                        "bundle_id": "bundle-123",
-                        "phone": "233123456789",
-                        "price": "5.00",
-                        "status": "completed",
-                        "vendor_reference": "VEN-456",
-                        "created_at": "2025-12-30T01:05:00Z"
-                    }
-                ]
-            }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "user_id": "550e8400-e29b-41d4-a716-446655440000",
+            "transactions": [
+                {
+                    "id": "1",
+                    "type": "deposit",
+                    "amount": "50.00",
+                    "currency": "GHS",
+                    "status": "success",
+                    "reference": "DEP-123",
+                    "created_at": "2025-12-30T01:00:00Z"
+                }
+            ],
+            "orders": [
+                {
+                    "id": "1",
+                    "bundle_id": "bundle-123",
+                    "phone": "233123456789",
+                    "price": "5.00",
+                    "status": "completed",
+                    "vendor_reference": "VEN-456",
+                    "created_at": "2025-12-30T01:05:00Z"
+                }
+            ]
         }
+    })
 
 
 class ReferralCodeResponseDTO(BaseModel):
@@ -102,16 +101,15 @@ class ReferralCodeResponseDTO(BaseModel):
     referral_code: str
     referral_link: str = Field(..., description="Full referral link for sharing")
     
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "user_id": "550e8400-e29b-41d4-a716-446655440000",
-                "telegram_id": "123456789",
-                "phone": None,
-                "referral_code": "ABC123",
-                "referral_link": "https://t.me/your_bot?start=ABC123"
-            }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "user_id": "550e8400-e29b-41d4-a716-446655440000",
+            "telegram_id": "123456789",
+            "phone": None,
+            "referral_code": "ABC123",
+            "referral_link": "https://t.me/your_bot?start=ABC123"
         }
+    })
 
 
 class ReferralItemDTO(BaseModel):
@@ -132,23 +130,22 @@ class UserReferralsResponseDTO(BaseModel):
     total_referrals: int = Field(..., description="Total number of users referred")
     referrals: List[ReferralItemDTO] = Field(default_factory=list)
     
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "user_id": "550e8400-e29b-41d4-a716-446655440000",
-                "telegram_id": "123456789",
-                "phone": None,
-                "total_referrals": 3,
-                "referrals": [
-                    {
-                        "id": "1",
-                        "referred_user_id": "other-user-id",
-                        "referred_at": "2025-12-29T12:00:00Z",
-                        "bonus_awarded": True
-                    }
-                ]
-            }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "user_id": "550e8400-e29b-41d4-a716-446655440000",
+            "telegram_id": "123456789",
+            "phone": None,
+            "total_referrals": 3,
+            "referrals": [
+                {
+                    "id": "1",
+                    "referred_user_id": "other-user-id",
+                    "referred_at": "2025-12-29T12:00:00Z",
+                    "bonus_awarded": True
+                }
+            ]
         }
+    })
 
 
 class OrderResponseDTO(BaseModel):
@@ -157,19 +154,19 @@ class OrderResponseDTO(BaseModel):
     status: str = Field(..., description="Request status")
     order_id: str
     order_status: str = Field(..., description="Order processing status")
+    delivery_status: str = Field(default="pending", description="Vendor delivery status")
     vendor_reference: Optional[str] = None
     message: Optional[str] = Field(None, description="Human-readable message")
     
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "status": "success",
-                "order_id": "550e8400-e29b-41d4-a716-446655440000",
-                "order_status": "processing",
-                "vendor_reference": "VEN-12345",
-                "message": "Order created successfully"
-            }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "status": "success",
+            "order_id": "550e8400-e29b-41d4-a716-446655440000",
+            "order_status": "processing",
+            "vendor_reference": "VEN-12345",
+            "message": "Order created successfully"
         }
+    })
 
 
 class BundleDTO(BaseModel):
@@ -188,18 +185,17 @@ class BundlesResponseDTO(BaseModel):
     
     bundles: List[BundleDTO] = Field(default_factory=list)
     
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "bundles": [
-                    {
-                        "id": "bundle-1",
-                        "network": "MTN",
-                        "capacity": "1GB",
-                        "mb": 1024,
-                        "price": "5.50",
-                        "currency": "GHS"
-                    }
-                ]
-            }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "bundles": [
+                {
+                    "id": "bundle-1",
+                    "network": "MTN",
+                    "capacity": "1GB",
+                    "mb": 1024,
+                    "price": "5.50",
+                    "currency": "GHS"
+                }
+            ]
         }
+    })

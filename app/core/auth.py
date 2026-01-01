@@ -116,7 +116,7 @@ async def verify_bot_request_signature(
 
 async def get_user_identity(
     x_user_id: str = Header(..., alias="X-User-ID"),
-    x_platform: str = Header(..., alias="X-Platform", regex="^(telegram|whatsapp)$"),
+    x_platform: str = Header(..., alias="X-Platform", pattern="^(telegram|whatsapp)$"),
     x_signature: str = Header(..., alias="X-Signature"),
     x_timestamp: Optional[str] = Header(None, alias="X-Timestamp")
 ) -> UserIdentity:

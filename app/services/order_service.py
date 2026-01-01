@@ -60,7 +60,8 @@ class OrderService:
             bundle_id=bundle_id,
             phone=phone,
             price=bundle_price,
-            status=OrderStatus.PROCESSING.value
+            status=OrderStatus.PROCESSING.value,
+            delivery_status="pending"
         )
         
         # Create transaction record
@@ -79,10 +80,14 @@ class OrderService:
             # Debit wallet
             await self.wallet_service.debit_wallet(user_id, bundle_price)
             
-            # Purchase bundle from DatamartGH
+            # Blessdatahub requires phone in local format (0XXXXXXXXX)
+            local_phone = phone
+            if phone.startswith("233") and len(phone) == 12:
+                local_phone = "0" + phone[3:]
+            
             try:
                 vendor_response = await self.blessdatahub_client.purchase_bundle(
-                    phone_number=phone,
+                    phone_number=local_phone,
                     network=bundle["network"],
                     package_size=f"{bundle['capacity']}GB",
                     ref=order["id"]
@@ -95,6 +100,7 @@ class OrderService:
                 await self.order_repo.update_order_status(
                     order["id"],
                     OrderStatus.SUCCESS.value,
+                    delivery_status="pending",
                     vendor_reference=vendor_ref,
                     vendor_response=vendor_response
                 )
@@ -125,6 +131,7 @@ class OrderService:
                 await self.order_repo.update_order_status(
                     order["id"],
                     OrderStatus.FAILED.value,
+                    delivery_status="failed",
                     vendor_response={"error": str(vendor_error)}
                 )
                 
@@ -151,3 +158,62 @@ class OrderService:
         except Exception as e:
             # Other errors
             raise ValueError(f"Order creation failed: {str(e)}")
+
+    async def sync_order_status(self, order_id: str) -> dict:
+        """
+        Sync order delivery status from vendor.
+        
+        Args:
+            order_id: The order ID
+            
+        Returns:
+            Updated order
+        """
+        order = await self.order_repo.get_by_id(order_id)
+        if not order:
+            raise ValueError(f"Order {order_id} not found")
+        
+        # Only sync if we have a vendor reference
+        if not order.get("vendor_reference"):
+            return order
+            
+        try:
+            # Check status with vendor
+            # Ensure vendor_reference is int if Blessdatahub requires int
+            vendor_ref = int(order["vendor_reference"])
+            status_data = await self.blessdatahub_client.check_order_status(vendor_ref)
+            
+            # Map vendor status to our delivery status
+            # Example response: {"orders": [{"status": "completed", ...}]}
+            orders_data = status_data.get("orders", [])
+            if not orders_data:
+                return order
+                
+            vendor_status = orders_data[0].get("status", "").lower()
+            
+            from app.models.order import DeliveryStatus
+            new_delivery_status = DeliveryStatus.PENDING.value
+            
+            if vendor_status in ["completed", "successful", "delivered", "success"]:
+                new_delivery_status = DeliveryStatus.DELIVERED.value
+            elif vendor_status in ["failed", "cancelled", "reversed"]:
+                new_delivery_status = DeliveryStatus.FAILED.value
+            
+            # Update if changed
+            if order.get("delivery_status") != new_delivery_status:
+                updated_order = await self.order_repo.update_order_status(
+                    order["id"],
+                    order["status"], # Keep existing system status
+                    delivery_status=new_delivery_status,
+                    vendor_response=status_data
+                )
+                return updated_order
+                
+            return order
+            
+        except Exception as e:
+            # Log error but don't crash
+            from logging import getLogger
+            logger = getLogger(__name__)
+            logger.error(f"Failed to sync status for order {order_id}: {e}")
+            return order

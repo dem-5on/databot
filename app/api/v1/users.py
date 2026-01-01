@@ -112,7 +112,7 @@ async def get_user_history(
     request: Request,
     identifier: str = Depends(verify_user_access),
     limit: int = Query(10, ge=1, le=100),
-    identifier_type: str = Query("telegram_id", regex="^(telegram_id|phone)$")
+    identifier_type: str = Query("telegram_id", pattern="^(telegram_id|phone)$")
 ):
     """
     Get transaction and order history for authenticated user.
@@ -169,7 +169,7 @@ async def get_user_history(
             TransactionHistoryItemDTO(
                 id=t["id"],
                 type=t["type"],
-                amount=t["amount"],
+                amount=str(t["amount"]),  # Convert to string
                 currency=t["currency"],
                 status=t["status"],
                 reference=t["reference"],
@@ -182,7 +182,7 @@ async def get_user_history(
                 id=o["id"],
                 bundle_id=o["bundle_id"],
                 phone=o["phone"],
-                price=o["price"],
+                price=str(o["price"]),  # Convert to string
                 status=o["status"],
                 vendor_reference=o.get("vendor_reference"),
                 created_at=o.get("created_at")
@@ -196,7 +196,7 @@ async def get_user_history(
 async def debug_full_user_data(
     request: Request,
     identifier: str,
-    identifier_type: str = Query("telegram_id", regex="^(telegram_id|phone)$"),
+    identifier_type: str = Query("telegram_id", pattern="^(telegram_id|phone)$"),
     admin_key: str = Depends(verify_admin_access)  # Require admin API key
 ):
     """

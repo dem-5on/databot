@@ -252,7 +252,12 @@ async def list_dashboard_orders(
     try:
         query = order_repo.client.table(order_repo.table_name).select("*")
         if status:
-            query = query.eq("status", status)
+            if status.lower() == "processing":
+                # Include orders that are pending processing OR pending delivery
+                # Exclude failed orders
+                query = query.eq("delivery_status", "pending").neq("status", "failed")
+            else:
+                query = query.eq("status", status)
             
         response = await query.order("created_at", desc=True).limit(limit).execute()
         return {
@@ -783,3 +788,30 @@ async def get_user_growth_chart(_: str = Depends(verify_dashboard_token)):
     except Exception as e:
         logger.error(f"Error fetching user growth chart: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch chart data")
+
+
+@router.post("/orders/{order_id}/sync")
+async def sync_order_status_endpoint(
+    order_id: str,
+    _: str = Depends(verify_dashboard_token)
+):
+    """
+    Manually sync order status with vendor.
+    """
+    from app.services.order_service import OrderService
+    
+    # SECURITY: Validate UUID to prevent injection
+    try:
+        validate_uuid_format(order_id, "Order ID")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+        
+    order_service = OrderService()
+    try:
+        updated_order = await order_service.sync_order_status(order_id)
+        return {"status": "success", "order": updated_order}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error syncing order {order_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to sync order: {str(e)}")
