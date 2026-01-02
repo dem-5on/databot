@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     # Minimum deposit amount in GHS
     MINIMUM_DEPOSIT_AMOUNT: int
 
+    # Maximum deposit amount in GHS
+    MAXIMUM_DEPOSIT_AMOUNT: int = 1000
+
     # REFERAL BONUS AMOUNT in GHS
     REFERRAL_BONUS_AMOUNT: float
 
@@ -64,7 +67,7 @@ class Settings(BaseSettings):
     DASHBOARD_TOKEN: str = ""  # 64-character token for monitoring dashboard access
 
     # Business Logic Limits
-    MAX_MANUAL_CREDIT_AMOUNT: float = 1000.0  # Maximum amount that can be manually credited at once
+    MAX_MANUAL_CREDIT_AMOUNT: float = 10.0  # Maximum amount that can be manually credited at once
 
     # HTTP Connection Pool Settings
     MAX_KEEPALIVE_CONNECTIONS: int = 20

@@ -51,7 +51,7 @@ class OrderHistoryItemDTO(BaseModel):
     phone: str = Field(..., description="Phone number data was sent to")
     price: str
     status: str
-    delivery_status: str = Field(..., description="Vendor delivery status")
+    delivery_status: Optional[str] = Field(None, description="Vendor delivery status")
     vendor_reference: Optional[str] = None
     created_at: Optional[str] = None
 

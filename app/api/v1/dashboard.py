@@ -1,15 +1,18 @@
+import asyncio
 import logging
-from typing import Optional, List, Dict, Any
+from typing import Optional
 from decimal import Decimal
-from datetime import datetime, timedelta
-from fastapi import APIRouter, HTTPException, Depends, Query
-from app.core.auth import verify_dashboard_token
 from app.core.config import settings
-from app.repository.base_user_repo import BaseUserRepository
-from app.repository.transaction_repo import TransactionRepository
+from datetime import datetime, timedelta
+from app.core.auth import verify_dashboard_token
+from app.services.order_service import OrderService
 from app.repository.order_repo import OrderRepository
+from app.services.wallet_service import WalletService
 from app.repository.bundle_repo import BundleRepository
 from app.repository.wallet_repo import WalletRepository
+from fastapi import APIRouter, HTTPException, Depends, Query
+from app.repository.base_user_repo import BaseUserRepository
+from app.repository.transaction_repo import TransactionRepository
 from app.utils.security_utils import safe_error_response, validate_uuid_format
 
 logger = logging.getLogger(__name__)
@@ -94,12 +97,12 @@ async def list_dashboard_users(
     whatsapp_repo = WhatsAppUserRepository()
     
     try:
-        # Get all base users
-        users = await user_repo.get_all(limit=1000, order_by="created_at", ascending=False)
-        
-        # Get all telegram and whatsapp users for efficient lookup
-        telegram_users = await telegram_repo.get_all(limit=1000)
-        whatsapp_users = await whatsapp_repo.get_all(limit=1000)
+        # Parallel fetch for performance
+        users, telegram_users, whatsapp_users = await asyncio.gather(
+            user_repo.get_all(limit=1000, order_by="created_at", ascending=False),
+            telegram_repo.get_all(limit=1000),
+            whatsapp_repo.get_all(limit=1000)
+        )
         
         # Create lookup maps by user_id
         telegram_map = {t.get("user_id"): t for t in telegram_users if t.get("user_id")}
@@ -198,9 +201,11 @@ async def list_dashboard_transactions(
         # Get user identifiers for all transactions
         user_ids = list(set(t.get("user_id") for t in transactions if t.get("user_id")))
         
-        # Fetch telegram and whatsapp users
-        telegram_users = await telegram_repo.get_all(limit=1000)
-        whatsapp_users = await whatsapp_repo.get_all(limit=1000)
+        # Parallel fetch for performance
+        telegram_users, whatsapp_users = await asyncio.gather(
+            telegram_repo.get_all(limit=1000),
+            whatsapp_repo.get_all(limit=1000)
+        )
         
         # Create lookup maps
         telegram_map = {t.get("user_id"): t for t in telegram_users if t.get("user_id")}
@@ -450,8 +455,6 @@ async def manual_credit_user(
     - User must exist before crediting
     - Reason is required for audit trail
     """
-    from app.services.wallet_service import WalletService
-    
     # SECURITY: Validate amount limits to prevent business logic abuse
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be positive")
@@ -798,8 +801,6 @@ async def sync_order_status_endpoint(
     """
     Manually sync order status with vendor.
     """
-    from app.services.order_service import OrderService
-    
     # SECURITY: Validate UUID to prevent injection
     try:
         validate_uuid_format(order_id, "Order ID")

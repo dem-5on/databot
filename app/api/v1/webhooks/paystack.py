@@ -1,17 +1,18 @@
 import json
 import logging
-from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
-from app.repository.transaction_repo import TransactionRepository
+from decimal import Decimal
+from app.core.rate_limit import limiter
+from app.core.constants import TransactionStatus
 from app.services.notifier import NotifierService
+from app.services.user_service import UserService
 from app.services.wallet_service import WalletService
 from app.services.paystack_service import PaystackService
 from app.services.referral_service import ReferralService
-from app.core.constants import TransactionStatus
-from decimal import Decimal
-from app.core.rate_limit import limiter
+from app.repository.transaction_repo import TransactionRepository
+from app.services.whatsapp_notifier import WhatsAppNotifierService
+from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
 
 router = APIRouter()
-
 
 @router.post("")
 @limiter.limit("100/minute")
@@ -108,7 +109,6 @@ async def paystack_webhook(
             await referral_service.award_referral_bonus(transaction["user_id"])
             
             # Notify user with balance information
-            from app.services.user_service import UserService
             user_service = UserService()
             user = await user_service.get_user_by_id(transaction["user_id"])
             if user and wallet:
@@ -124,7 +124,6 @@ async def paystack_webhook(
                     )
                 # Notify via WhatsApp if user has whatsapp_phone
                 if user.get("whatsapp_phone"):
-                    from app.services.whatsapp_notifier import WhatsAppNotifierService
                     whatsapp_notifier = WhatsAppNotifierService()
                     await whatsapp_notifier.send_text_message(
                         user["whatsapp_phone"],

@@ -1,9 +1,8 @@
-from fastapi import APIRouter
 import time
 import logging
+from fastapi import APIRouter
 from app.utils.health_checks import check_all_services
 from app.repository.health_repo import HealthLogRepository
-import asyncio
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -23,27 +22,17 @@ async def health_check():
     # Enhance with historical uptime
     services_status = []
     
-    # We can fetch uptimes in parallel
-    async def attach_uptime(service):
+    for service in current_status:
         try:
             uptime = await repo.get_uptime_percentage(service["name"])
         except Exception:
             uptime = 0.0
         
-        # If uptime is 0 (no logs yet), default to perfect if currently healthy (optimistic) 
-        # or stick to 0? User asked for option 3, so meaningful data. 
-        # If no logs, let's show what we have (0 or 100 based on current?). 
-        # Let's show 100 if current is healthy and no history to avoid scaring users, 
-        # or maybe 0 implies "no data". 
-        # Actually, let's trust the repo result. If 0 logs, repo returns 0.
-        
-        return {
+        services_status.append({
             **service,
             "uptime": uptime,
             "lastCheck": "Just now"
-        }
-
-    services_status = await asyncio.gather(*[attach_uptime(s) for s in current_status])
+        })
 
     # Calculate overall health
     all_healthy = all(s["status"] == "operational" for s in services_status)

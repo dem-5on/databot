@@ -184,6 +184,7 @@ async def get_user_history(
                 phone=o["phone"],
                 price=str(o["price"]),  # Convert to string
                 status=o["status"],
+                delivery_status=o.get("delivery_status"),
                 vendor_reference=o.get("vendor_reference"),
                 created_at=o.get("created_at")
             )

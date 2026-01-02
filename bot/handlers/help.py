@@ -19,15 +19,12 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• AirtelTigo\n\n"
         "💰 Payment Methods:\n"
         "• Mobile Money (MTN, Telecel, AirtelTigo)\n\n"
-        " ⚠️ IMPORTANT NOTICE:\n"
+        " ⚠️ IMPORTANT NOTICE:\n\n"
+        "• Please do not place orders for the same number at the same time interval. One will be rejected and no refund will be provided.\n\n"
 
-        "Turbonet and Broadband Sim Cards are not eligible for this offer."
+        "• Data bundle delivery is not instant. Some numbers may receive data faster while others take some time.\n\n"
 
-        "• Please do not place orders for the same number at the same time interval. One will be rejected and no refund will be provided."
-
-        "• Data bundle delivery is not instant. Some numbers may receive data faster while others take some time."
-
-        "• No refunds will be issued for wrong transactions or incorrect phone numbers."
+        "• No refunds will be issued for wrong transactions or incorrect phone numbers.\n\n"
 
         "• Please verify your phone number carefully before making a purchase.\n\n"
         "❓ Need more help?\n"

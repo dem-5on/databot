@@ -25,6 +25,29 @@ def normalize_phone_number(phone: str, country_code: str = "233") -> str:
     return f"{country_code}{phone}"
 
 
+def normalize_phone_to_local(phone: str) -> str:
+    """
+    Normalize phone number to local format (0XXXXXXXXX).
+    
+    Args:
+        phone: Phone number in various formats (0XXXXXXXXX, 233XXXXXXXXX, +233XXXXXXXXX)
+        
+    Returns:
+        Normalized phone number in local format (e.g., "0XXXXXXXXX")
+    """
+    phone = phone.strip().replace(" ", "").replace("-", "")
+    
+    # If starts with +233, remove +
+    if phone.startswith("+233"):
+        phone = phone[1:]
+    
+    # If starts with 233, convert to 0 format
+    if phone.startswith("233") and len(phone) == 12:
+        phone = "0" + phone[3:]
+    
+    return phone
+
+
 def validate_phone_number(phone: str) -> tuple[bool, str]:
     """
     Validate phone number format.

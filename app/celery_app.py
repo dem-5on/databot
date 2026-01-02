@@ -1,4 +1,3 @@
-"""Celery app configuration."""
 from celery import Celery
 from app.core.config import settings
 
@@ -7,7 +6,7 @@ celery_app = Celery(
     "databot",
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
-    include=["app.tasks"]  # Include task modules
+    include=["app.tasks"]
 )
 
 # Celery configuration
@@ -24,7 +23,5 @@ celery_app.conf.update(
     task_acks_late=True,
     
     # Beat schedule for periodic tasks
-    # Note: Bundle sync is disabled - Blessdatahub uses static pricing
-    # Bundles are seeded via SQL script (seed_bundles.sql)
     beat_schedule={},
 )

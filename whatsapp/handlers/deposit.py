@@ -3,10 +3,11 @@ import asyncio
 import logging
 from decimal import Decimal
 from app.core.config import settings
-from app.services.whatsapp_notifier import WhatsAppNotifierService
 from whatsapp.keyboard import get_back_cancel_buttons
-from app.utils.phone_utils import normalize_phone_number
 from app.utils.backend_client import BackendAPIClient
+from app.services.settings_service import SettingsService
+from app.services.whatsapp_notifier import WhatsAppNotifierService
+from app.utils.phone_utils import normalize_phone_number, normalize_phone_to_local, detect_network, validate_phone_number
 
 logger = logging.getLogger(__name__)
 
@@ -16,79 +17,6 @@ NETWORK_PREFIXES = {
     "TELECEL": ["020", "050"],
     "AIRTELTIGO": ["027", "057", "026", "056"]
 }
-
-
-def normalize_phone_for_detection(phone: str) -> str:
-    """
-    Normalize phone number to 0XXXXXXXXX format for network detection.
-    
-    Args:
-        phone: Phone number in any format
-        
-    Returns:
-        Normalized phone number starting with 0
-    """
-    phone = phone.strip().replace(" ", "").replace("-", "")
-    
-    # If starts with +233, remove +
-    if phone.startswith("+233"):
-        phone = phone[1:]
-    
-    # If starts with 233, convert to 0 format
-    if phone.startswith("233") and len(phone) == 12:
-        phone = "0" + phone[3:]
-    
-    return phone
-
-
-def detect_network(phone: str) -> str | None:
-    """
-    Detect mobile network from phone number prefix.
-    Phone should be in 0XXXXXXXXX format.
-    
-    Args:
-        phone: Phone number (should be normalized to 0XXXXXXXXX first)
-        
-    Returns:
-        Network name (MTN, VODAFONE, AIRTELTIGO) or None if not detected
-    """
-    if len(phone) < 10:
-        return None
-    
-    prefix = phone[:3]
-    
-    for network, prefixes in NETWORK_PREFIXES.items():
-        if prefix in prefixes:
-            return network
-    
-    return None
-
-
-def validate_phone_number(phone: str) -> tuple[bool, str]:
-    """
-    Validate phone number format.
-    
-    Args:
-        phone: Phone number to validate
-        
-    Returns:
-        Tuple of (is_valid, error_message)
-    """
-    phone = phone.strip().replace(" ", "").replace("-", "")
-    
-    # Check if it's 10 digits starting with 0
-    if phone.startswith("0") and len(phone) == 10 and phone.isdigit():
-        return True, ""
-    
-    # Check if it's 12 digits starting with 233
-    if phone.startswith("233") and len(phone) == 12 and phone.isdigit():
-        return True, ""
-    
-    # Check if it's 13 digits starting with +233
-    if phone.startswith("+233") and len(phone) == 13 and phone[1:].isdigit():
-        return True, ""
-    
-    return False, "Invalid format. Use 0XXXXXXXXX or 233XXXXXXXXX"
 
 
 async def start(phone_number: str, bot) -> None:
@@ -143,15 +71,23 @@ async def handle_amount(phone_number: str, amount_text: str, bot) -> None:
         try:
             amount = Decimal(amount_text.strip())
             
-            # Get dynamic minimum deposit
-            from app.services.settings_service import SettingsService
+            # Get dynamic deposit limits
             settings_service = SettingsService()
             min_deposit = await settings_service.get_min_deposit_amount()
+            max_deposit = await settings_service.get_max_deposit_amount()
             
             if amount < min_deposit:
                 await notifier.send_interactive_message(
                     normalized_phone,
                     f"❌ Minimum deposit amount is GHS {min_deposit}. Please enter a valid amount:",
+                    get_back_cancel_buttons()
+                )
+                return
+            
+            if amount > max_deposit:
+                await notifier.send_interactive_message(
+                    normalized_phone,
+                    f"❌ Maximum deposit amount is GHS {max_deposit}. Please enter a valid amount:",
                     get_back_cancel_buttons()
                 )
                 return
@@ -241,7 +177,7 @@ async def handle_phone(phone_number: str, phone_input: str, bot) -> None:
             return
         
         # Normalize phone for detection (to 0XXXXXXXXX format)
-        phone_for_detection = normalize_phone_for_detection(phone_input)
+        phone_for_detection = normalize_phone_to_local(phone_input)
         
         # Add debug logging
         logger.info(f"Original phone input: {phone_input}")
@@ -303,6 +239,7 @@ async def handle_phone(phone_number: str, phone_input: str, bot) -> None:
             for attempt in range(max_retries + 1):
                 try:
                     client = BackendAPIClient.get_client()
+                    auth_headers = BackendAPIClient.get_auth_headers(str(user["id"]), "whatsapp")
                     response = await client.post(
                         f"{settings.BACKEND_API_URL}/api/v1/wallet/deposit/init",
                         json={
@@ -311,6 +248,7 @@ async def handle_phone(phone_number: str, phone_input: str, bot) -> None:
                             "phone": normalized_momo_phone,
                             "provider": network
                         },
+                        headers=auth_headers,
                     )
                     response.raise_for_status()
                     break  # Success
@@ -417,12 +355,14 @@ async def handle_otp(phone_number: str, otp: str, bot) -> None:
             for attempt in range(max_retries + 1):
                 try:
                     client = BackendAPIClient.get_client()
+                    auth_headers = BackendAPIClient.get_auth_headers(str(user["id"]), "whatsapp")
                     response = await client.post(
                         f"{settings.BACKEND_API_URL}/api/v1/wallet/deposit/confirm",
                         json={
                             "reference": reference,
                             "otp": otp.strip()
                         },
+                        headers=auth_headers,
                     )
                     response.raise_for_status()
                     break  # Success
@@ -459,8 +399,10 @@ async def handle_otp(phone_number: str, otp: str, bot) -> None:
                 try:
                     logger.info(f"Verifying transaction: {reference}")
                     client = BackendAPIClient.get_client()
+                    auth_headers = BackendAPIClient.get_auth_headers(str(user["id"]), "whatsapp")
                     verify_response = await client.post(
                         f"{settings.BACKEND_API_URL}/api/v1/wallet/deposit/verify/{reference}",
+                        headers=auth_headers,
                     )
                     verify_response.raise_for_status()
                     verify_data = verify_response.json()
@@ -489,8 +431,10 @@ async def handle_otp(phone_number: str, otp: str, bot) -> None:
                         # Second verification attempt
                         try:
                             client = BackendAPIClient.get_client()
+                            auth_headers2 = BackendAPIClient.get_auth_headers(str(user["id"]), "whatsapp")
                             verify_response2 = await client.post(
                                 f"{settings.BACKEND_API_URL}/api/v1/wallet/deposit/verify/{reference}",
+                                headers=auth_headers2,
                             )
                             verify_response2.raise_for_status()
                             verify_data2 = verify_response2.json()

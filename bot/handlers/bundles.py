@@ -2,9 +2,9 @@ import httpx
 import logging
 from telegram import Update
 from app.core.config import settings
-from telegram.ext import ContextTypes, ConversationHandler
 from app.utils.backend_client import BackendAPIClient
-from app.utils.phone_utils import validate_phone_number, detect_network
+from telegram.ext import ContextTypes, ConversationHandler
+from app.utils.phone_utils import validate_phone_number, detect_network, normalize_phone_to_local
 from bot.keyboard import get_network_keyboard, get_bundles_keyboard, get_phone_input_keyboard
 
 logging.basicConfig(level=logging.INFO)
@@ -26,26 +26,6 @@ NETWORK_PREFIXES = {
     "TELECEL": ["020", "050"],
     "AIRTELTIGO": ["027", "057", "026", "056"]
 }
-
-
-def normalize_phone_to_local(phone: str) -> str:
-    """
-    Normalize phone number to local format (0XXXXXXXXX).
-    
-    Args:
-        phone: Phone number in format 0XXXXXXXXX or 233XXXXXXXXX
-        
-    Returns:
-        Normalized phone number starting with 0
-    """
-    phone = phone.strip().replace(" ", "").replace("-", "")
-    
-    # If starts with 233, convert to 0 format
-    if phone.startswith("233") and len(phone) == 12:
-        phone = "0" + phone[3:]
-    
-    return phone
-
 
 
 

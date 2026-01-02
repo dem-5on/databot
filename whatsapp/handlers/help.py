@@ -32,7 +32,6 @@ async def help_handler(phone_number: str, bot) -> None:
             "💰 Payment Methods:\n"
             "• Mobile Money (MTN, Telecel, AirtelTigo)\n\n"
             "⚠️ IMPORTANT NOTICE:\n\n"
-            "• Turbonet and Broadband Sim Cards are not eligible for this offer.\n\n"
             "• Please do not place orders for the same number at the same time interval. One will be rejected and no refund will be provided.\n\n"
             "• Data bundle delivery is not instant. Some numbers may receive data faster while others take some time.\n\n"
             "• No refunds will be issued for wrong transactions or incorrect phone numbers.\n\n"

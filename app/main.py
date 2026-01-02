@@ -1,4 +1,5 @@
 import httpx
+import asyncio
 import logging
 import uvicorn
 from fastapi import FastAPI
@@ -27,9 +28,7 @@ from app.api.v1.dashboard import router as dashboard_router
 from app.api.v1.system import router as system_router
 from app.api.v1.health import router as health_router
 from app.tasks.health_monitor import monitor_health_task
-import asyncio
 
-# ... imports end ...
 
 
 logging.basicConfig(level=logging.INFO)
@@ -162,12 +161,8 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS middleware
-# If allowed_origins contains "*", allow_credentials MUST be False
-# We'll set a explicit list for dev convenience
 origins = settings.ALLOWED_ORIGINS
-if "*" in origins:
-    # In dev, we can allow everything if we don't need credentials
-    # but since allow_credentials is True, we must be specific
+if "*" in origins:   
     origins = [
         "http://localhost:8080",
         "http://localhost:5173",
@@ -184,6 +179,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# GZip compression for API responses
+from starlette.middleware.gzip import GZipMiddleware
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # Include routers
 app.include_router(wallet_router, prefix="/api/v1/wallet", tags=["wallet"])
@@ -217,8 +216,6 @@ async def telegram_redirect():
 
 
 if __name__ == "__main__":
-    # Use multiple workers for production (handles 500+ users)
-    # Set workers=1 for development/debugging
     workers = settings.UVICORN_WORKERS
     uvicorn.run(
         "app.main:app", 

@@ -3,17 +3,20 @@ import logging
 from decimal import Decimal
 from typing import Optional
 from pydantic import BaseModel
-from fastapi import APIRouter, HTTPException, Request, Depends
-from app.core.auth import verify_user_access, get_user_identity, UserIdentity
 from app.core.rate_limit import limiter
 from app.api.schemas import BalanceResponseDTO
 from app.services.notifier import NotifierService
+from app.services.user_service import UserService
 from app.services.wallet_service import WalletService
+from app.utils.security_utils import safe_error_response
 from app.services.paystack_service import PaystackService
 from app.services.referral_service import ReferralService
-from app.core.constants import TransactionType, TransactionStatus
+from app.repository.base_user_repo import BaseUserRepository
+from fastapi import APIRouter, HTTPException, Request, Depends
 from app.repository.transaction_repo import TransactionRepository
-from app.utils.security_utils import safe_error_response
+from app.core.constants import TransactionType, TransactionStatus
+from app.services.whatsapp_notifier import WhatsAppNotifierService
+from app.core.auth import verify_user_access, get_user_identity, UserIdentity
 
 logger = logging.getLogger(__name__)
 
@@ -50,21 +53,16 @@ async def init_deposit(
     
     # Get user - either by user_id (WhatsApp) or telegram_id (Telegram)
     if deposit_data.user_id:
-        # WhatsApp: user_id provided directly
-        # SECURITY: Validate that the provided user_id matches the authenticated user
         if deposit_data.user_id != user.user_id:
             raise HTTPException(
                 status_code=403,
                 detail="User ID mismatch - you can only initiate deposits for yourself"
             )
-        from app.repository.base_user_repo import BaseUserRepository
         base_user_repo = BaseUserRepository()
         db_user = await base_user_repo.get_by_id(deposit_data.user_id)
         if not db_user:
             raise HTTPException(status_code=404, detail="User not found")
     elif deposit_data.telegram_id:
-        # Telegram: use UserService for proper multi-table lookup
-        # SECURITY: Validate that the provided telegram_id matches the authenticated user
         if deposit_data.telegram_id != user.user_id:
             raise HTTPException(
                 status_code=403,
@@ -358,7 +356,6 @@ async def verify_deposit(
                             )
                         # Notify via WhatsApp if user has phone number
                         if user.get("phone"):
-                            from app.services.whatsapp_notifier import WhatsAppNotifierService
                             whatsapp_notifier = WhatsAppNotifierService()
                             await whatsapp_notifier.send_text_message(
                                 user["phone"],
