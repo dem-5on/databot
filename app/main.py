@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.core.rate_limit import limiter
 from contextlib import asynccontextmanager
 from slowapi.errors import RateLimitExceeded
+from starlette.middleware.gzip import GZipMiddleware
 from bot.telegram_bot import start_webhook_mode, stop_webhook_mode
 from slowapi import _rate_limit_exceeded_handler
 from app.api.v1.sync import router as sync_bundles
@@ -181,7 +182,6 @@ app.add_middleware(
 )
 
 # GZip compression for API responses
-from starlette.middleware.gzip import GZipMiddleware
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # Include routers
