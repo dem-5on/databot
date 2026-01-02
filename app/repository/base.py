@@ -148,7 +148,7 @@ class BaseRepository:
             ValueError: If deletion fails
         """
         try:
-            response = await self.client.table(self.table_name).delete().eq("id", record_id).execute()
+            await self.client.table(self.table_name).delete().eq("id", record_id).execute()
             logger.info(f"Deleted record {record_id} from {self.table_name}")
             return True
         except APIError as e:

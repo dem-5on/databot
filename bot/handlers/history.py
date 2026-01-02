@@ -25,7 +25,7 @@ async def history_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 response.raise_for_status()
                 break  # Success
-            except (httpx.RemoteProtocolError, httpx.ConnectError) as conn_error:
+            except (httpx.RemoteProtocolError, httpx.ConnectError):
                 if attempt < max_retries:
                     await BackendAPIClient.reset_client()
                 else:
@@ -72,7 +72,7 @@ async def history_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"⚠️ Error fetching history: {e.response.status_code}\n"
             f"Please try again later."
         )
-    except Exception as e:
+    except Exception:
         await update.message.reply_text(
-            f"⚠️ An error occurred. Please try again later."
+            "⚠️ An error occurred. Please try again later."
         )

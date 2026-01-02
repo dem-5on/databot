@@ -2,7 +2,6 @@ import httpx
 import time
 import logging
 from app.core.config import settings
-from app.services.blessdatahub_client import BlessdatahubClient
 from app.repository.base import BaseRepository
 
 logger = logging.getLogger(__name__)

@@ -5,7 +5,7 @@ from sqlalchemy import DateTime
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID, JSONB
-from sqlalchemy import Column, String, Numeric, ForeignKey, Enum as SQLEnum, JSON
+from sqlalchemy import Column, String, Numeric, ForeignKey, Enum as SQLEnum
 
 
 class TransactionType(str, enum.Enum):

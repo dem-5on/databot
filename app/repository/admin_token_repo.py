@@ -1,7 +1,7 @@
 import logging
 import secrets
 import string
-from typing import Optional, List, Dict, Any
+from typing import List, Dict, Any
 from datetime import datetime
 from uuid import uuid4
 from app.repository.base import BaseRepository

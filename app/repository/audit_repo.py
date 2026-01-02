@@ -1,5 +1,5 @@
 import logging
-from typing import Optional, List, Dict, Any
+from typing import Optional, Dict, Any
 from uuid import uuid4
 from datetime import datetime
 from app.repository.base import BaseRepository

@@ -7,7 +7,6 @@ from datetime import datetime, timedelta
 from app.core.auth import verify_dashboard_token
 from app.services.order_service import OrderService
 from app.repository.order_repo import OrderRepository
-from app.services.wallet_service import WalletService
 from app.repository.bundle_repo import BundleRepository
 from app.repository.wallet_repo import WalletRepository
 from fastapi import APIRouter, HTTPException, Depends, Query
@@ -198,9 +197,6 @@ async def list_dashboard_transactions(
         response = await query.order("created_at", desc=True).limit(limit).execute()
         transactions = response.data if response.data else []
         
-        # Get user identifiers for all transactions
-        user_ids = list(set(t.get("user_id") for t in transactions if t.get("user_id")))
-        
         # Parallel fetch for performance
         telegram_users, whatsapp_users = await asyncio.gather(
             telegram_repo.get_all(limit=1000),
@@ -293,7 +289,7 @@ async def list_dashboard_bundles(_: str = Depends(verify_dashboard_token)):
                     return float(cap.replace("MB", "").strip()) / 1024
                 else:
                     return float(cap)
-            except:
+            except Exception:
                 return 0.0
         
         # Sort by network first, then by capacity
@@ -482,7 +478,6 @@ async def manual_credit_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    wallet_service = WalletService()
     try:
         transaction_repo = TransactionRepository()
         import uuid
@@ -619,7 +614,6 @@ async def get_recent_activity(
     """
     Get recent activity feed combining transactions, orders, and new users.
     """
-    user_repo = BaseUserRepository()
     transaction_repo = TransactionRepository()
     order_repo = OrderRepository()
     
@@ -650,13 +644,12 @@ async def get_recent_activity(
         # Get recent orders
         recent_orders = await order_repo.get_all(limit=20, order_by="created_at", ascending=False)
         for order in recent_orders[:10]:
-            bundle_id = order.get("bundle_id", "")[:8] if order.get("bundle_id") else "Unknown"
             status = order.get("status", "processing")
             
             if status == "completed" or status == "success":
-                message = f"Bundle order completed"
+                message = "Bundle order completed"
             elif status == "processing" or status == "pending":
-                message = f"Bundle order processing"
+                message = "Bundle order processing"
             else:
                 message = f"Bundle order {status}"
             
@@ -725,7 +718,7 @@ async def get_recent_activity(
                     else:
                         days = minutes // 1440
                         activity["time"] = f"{days} day{'s' if days > 1 else ''} ago"
-                except:
+                except Exception:
                     activity["time"] = "Unknown"
             else:
                 activity["time"] = "Unknown"

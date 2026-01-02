@@ -355,7 +355,7 @@ async def handle_otp(phone_number: str, otp: str, bot) -> None:
             for attempt in range(max_retries + 1):
                 try:
                     client = BackendAPIClient.get_client()
-                    auth_headers = BackendAPIClient.get_auth_headers(str(user["id"]), "whatsapp")
+                    auth_headers = BackendAPIClient.get_auth_headers(normalized_phone, "whatsapp")
                     response = await client.post(
                         f"{settings.BACKEND_API_URL}/api/v1/wallet/deposit/confirm",
                         json={
@@ -399,7 +399,7 @@ async def handle_otp(phone_number: str, otp: str, bot) -> None:
                 try:
                     logger.info(f"Verifying transaction: {reference}")
                     client = BackendAPIClient.get_client()
-                    auth_headers = BackendAPIClient.get_auth_headers(str(user["id"]), "whatsapp")
+                    auth_headers = BackendAPIClient.get_auth_headers(normalized_phone, "whatsapp")
                     verify_response = await client.post(
                         f"{settings.BACKEND_API_URL}/api/v1/wallet/deposit/verify/{reference}",
                         headers=auth_headers,
@@ -431,7 +431,7 @@ async def handle_otp(phone_number: str, otp: str, bot) -> None:
                         # Second verification attempt
                         try:
                             client = BackendAPIClient.get_client()
-                            auth_headers2 = BackendAPIClient.get_auth_headers(str(user["id"]), "whatsapp")
+                            auth_headers2 = BackendAPIClient.get_auth_headers(normalized_phone, "whatsapp")
                             verify_response2 = await client.post(
                                 f"{settings.BACKEND_API_URL}/api/v1/wallet/deposit/verify/{reference}",
                                 headers=auth_headers2,

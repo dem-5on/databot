@@ -1,5 +1,5 @@
-from typing import Optional, List, Dict, Any
-from fastapi import APIRouter, HTTPException, Depends, Body, Query
+from typing import Optional, Dict, Any
+from fastapi import APIRouter, HTTPException, Depends, Body
 from app.core.auth import verify_dashboard_token
 from app.repository.audit_repo import AuditLogRepository
 from app.repository.settings_repo import SettingsRepository

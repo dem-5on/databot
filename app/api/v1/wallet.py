@@ -46,7 +46,6 @@ async def init_deposit(
     Initialize a deposit transaction and create Paystack charge.
     Requires authentication via X-User-ID, X-Platform, and X-Signature headers.
     """
-    from app.services.user_service import UserService
     
     user_service = UserService()
     transaction_repo = TransactionRepository()
@@ -141,7 +140,6 @@ async def get_balance(
         identifier: User identifier (auto-verified via auth)
         identifier_type: "telegram_id" or "phone"
     """
-    from app.services.user_service import UserService
     
     user_service = UserService()
     wallet_service = WalletService()

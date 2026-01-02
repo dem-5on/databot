@@ -5,8 +5,6 @@ These Pydantic models ensure consistent, type-safe responses across the API
 and prevent accidental exposure of internal fields.
 """
 
-from decimal import Decimal
-from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel, Field, ConfigDict
 

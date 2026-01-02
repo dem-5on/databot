@@ -152,7 +152,7 @@ class OrderService:
                 
                 raise ValueError(f"Vendor purchase failed: {str(vendor_error)}")
                 
-        except ValueError as e:
+        except ValueError:
             # Re-raise balance errors
             raise
         except Exception as e:

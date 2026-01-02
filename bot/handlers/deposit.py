@@ -138,7 +138,7 @@ async def deposit_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 response.raise_for_status()
                 break  # Success
-            except (httpx.RemoteProtocolError, httpx.ConnectError) as conn_error:
+            except (httpx.RemoteProtocolError, httpx.ConnectError):
                 if attempt < max_retries:
                     logger.warning(f"Connection error (attempt {attempt + 1}/{max_retries + 1}), resetting client")
                     await BackendAPIClient.reset_client()
@@ -192,7 +192,7 @@ async def deposit_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Try to send error message, but handle Telegram API errors gracefully
         try:
             await update.message.reply_text(
-                f"❌ Deposit Failed\n\n"
+                "❌ Deposit Failed\n\n"
                 "Please try again."
             )
         except Exception as telegram_error:
@@ -201,7 +201,7 @@ async def deposit_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 if update.callback_query:
                     await update.callback_query.edit_message_text(
-                        f"❌ Deposit Failed\n\n"
+                        "❌ Deposit Failed\n\n"
                         "Please try again."
                     )
             except Exception:
@@ -224,7 +224,7 @@ async def deposit_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 if update.callback_query:
                     await update.callback_query.edit_message_text(
-                        f"❌ An error occurred\n\n"
+                        "❌ An error occurred\n\n"
                         "Please try again later."
                     )
             except Exception:
@@ -271,7 +271,7 @@ async def deposit_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 response.raise_for_status()
                 break  # Success
-            except (httpx.RemoteProtocolError, httpx.ConnectError) as conn_error:
+            except (httpx.RemoteProtocolError, httpx.ConnectError):
                 if attempt < max_retries:
                     logger.warning(f"Connection error (attempt {attempt + 1}/{max_retries + 1}), resetting client")
                     await BackendAPIClient.reset_client()
@@ -297,7 +297,7 @@ async def deposit_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # OTP submitted but payment pending - verify immediately
             try:
                 await update.message.reply_text(
-                    f"⏳ OTP submitted. Verifying payment status..."
+                    "⏳ OTP submitted. Verifying payment status..."
                 )
             except Exception as telegram_error:
                 logger.error(f"Failed to send verification status message via Telegram: {telegram_error}")                
@@ -367,9 +367,9 @@ async def deposit_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         else:
                             try:
                                 await update.message.reply_text(
-                                    f"⏳ Payment is still being processed.\n\n"
-                                    f"If your payment was successful, your wallet will be credited shortly.\n"
-                                    f"You can check your balance using the 💼 Balance button."
+                                    "⏳ Payment is still being processed.\n\n"
+                                    "If your payment was successful, your wallet will be credited shortly.\n"
+                                    "You can check your balance using the 💼 Balance button."
                                 )
                             except Exception as telegram_error:
                                 logger.error(f"Failed to send pending status message via Telegram: {telegram_error}")
@@ -377,9 +377,9 @@ async def deposit_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         # Second verification failed, but that's okay
                         try:
                             await update.message.reply_text(
-                                f"⏳ Payment is being processed.\n\n"
-                                f"If your payment was successful, your wallet will be credited shortly.\n"
-                                f"You can check your balance using the 💼 Balance button."
+                                "⏳ Payment is being processed.\n\n"
+                                "If your payment was successful, your wallet will be credited shortly.\n"
+                                "You can check your balance using the 💼 Balance button."
                             )
                         except Exception as telegram_error:
                             logger.error(f"Failed to send processing status message via Telegram: {telegram_error}")
@@ -397,10 +397,10 @@ async def deposit_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 # Verification failed, but OTP was submitted
                 try:
                     await update.message.reply_text(
-                        f"⏳ OTP submitted successfully.\n\n"
-                        f"Payment is being processed. If your payment was successful, "
-                        f"your wallet will be credited automatically via webhook.\n\n"
-                        f"You can check your balance using the 💼 Balance button."
+                        "⏳ OTP submitted successfully.\n\n"
+                        "Payment is being processed. If your payment was successful, "
+                        "your wallet will be credited automatically via webhook.\n\n"
+                        "You can check your balance using the 💼 Balance button."
                     )
                 except Exception as telegram_error:
                     logger.error(f"Failed to send OTP submitted message via Telegram: {telegram_error}")

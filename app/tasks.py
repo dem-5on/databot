@@ -1,7 +1,6 @@
 import asyncio
 import logging
 from app.celery_app import celery_app
-from app.services.bundle_sync import BundleSyncService
 
 logger = logging.getLogger(__name__)
 

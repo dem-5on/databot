@@ -13,7 +13,6 @@ async def health_check():
     System health check endpoint.
     Checks database connection and reports system status.
     """
-    start_time = time.time()
     repo = HealthLogRepository()
     
     # Get current status (real-time)
@@ -36,7 +35,6 @@ async def health_check():
 
     # Calculate overall health
     all_healthy = all(s["status"] == "operational" for s in services_status)
-    api_uptime = time.time() - start_time
 
     return {
         "status": "healthy" if all_healthy else "degraded",

@@ -6,6 +6,7 @@ from app.utils.backend_client import BackendAPIClient
 from telegram.ext import ContextTypes, ConversationHandler
 from app.utils.phone_utils import validate_phone_number, detect_network, normalize_phone_to_local
 from bot.keyboard import get_network_keyboard, get_bundles_keyboard, get_phone_input_keyboard
+from bot.api_client import get_auth_headers
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -267,8 +268,6 @@ def get_network_prefixes_text(network: str) -> str:
     prefixes = NETWORK_PREFIXES.get(network, [])
     return " • " + ", ".join(prefixes) if prefixes else "Unknown"
 
-
-from bot.api_client import get_auth_headers
 
 
 async def create_order_from_bundle(

@@ -1,6 +1,5 @@
 import logging
 import asyncio
-from typing import Optional
 from contextlib import asynccontextmanager
 
 logger = logging.getLogger(__name__)
@@ -186,7 +185,7 @@ async def wallet_lock(user_id: str, operation: str = "credit"):
         acquired = await lock.acquire()
         if not acquired:
             raise LockAcquisitionError(
-                f"Wallet operation in progress. Please try again in a moment."
+                "Wallet operation in progress. Please try again in a moment."
             )
         yield lock
     finally:
@@ -212,7 +211,7 @@ async def transaction_lock(reference: str):
         acquired = await lock.acquire()
         if not acquired:
             raise LockAcquisitionError(
-                f"Transaction already being processed."
+                "Transaction already being processed."
             )
         yield lock
     finally:

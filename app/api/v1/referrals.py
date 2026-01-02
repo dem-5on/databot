@@ -108,7 +108,7 @@ async def get_referral_leaderboard(
     try:
         leaderboard = await referral_service.get_leaderboard(limit=limit)
         return {"leaderboard": leaderboard}
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=500, detail="Failed to fetch leaderboard")
 
 
@@ -119,7 +119,7 @@ async def get_referral_stats(request: Request):
     service = ReferralService()
     try:
         return await service.get_stats()
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=500, detail="Failed to fetch stats")
 
 
@@ -131,5 +131,5 @@ async def get_recent_bonuses(request: Request, limit: int = 10):
     try:
         bonuses = await service.get_recent_payouts(limit=limit)
         return {"bonuses": bonuses}
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=500, detail="Failed to fetch bonuses")

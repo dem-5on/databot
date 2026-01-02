@@ -34,7 +34,7 @@ def start_scheduler():
     )
     
     scheduler.start()
-    logger.info(f"📅 Scheduler started - Bundle sync will run daily at 12:00 AM")
+    logger.info("📅 Scheduler started - Bundle sync will run daily at 12:00 AM")
 
 
 def stop_scheduler():

@@ -61,7 +61,7 @@ async def get_bundles(network: Optional[str] = None):
             else:
                 # Try parsing as plain number
                 return float(cap)
-        except:
+        except Exception:
             return 0.0
     
     bundles = sorted(bundles, key=lambda b: parse_capacity(b.get("capacity", "0")))

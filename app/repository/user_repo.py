@@ -2,6 +2,7 @@ import logging
 from uuid import uuid4
 from typing import Optional, Dict, Any, Tuple
 from app.repository.base import BaseRepository
+from app.repository.telegram_user_repo import TelegramUserRepository
 
 logger = logging.getLogger(__name__)
 

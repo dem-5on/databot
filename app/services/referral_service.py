@@ -21,7 +21,6 @@ class ReferralService:
     REFERRAL_CODE_LENGTH = 8
 
     def __init__(self):
-        from app.core.config import settings
         # self.REFERRAL_BONUS_AMOUNT = Decimal(str(settings.REFERRAL_BONUS_AMOUNT)) # Use dynamic getter instead
         self.user_repo = UserRepository()
         self.referral_repo = ReferralRepository()

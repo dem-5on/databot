@@ -1,7 +1,7 @@
 import logging
 from typing import Optional
 from pydantic import BaseModel
-from fastapi import APIRouter, HTTPException, Query, Header, Depends, Request
+from fastapi import APIRouter, HTTPException, Query, Depends, Request
 from app.core.config import settings
 from app.core.auth import get_user_identity, verify_user_access, verify_admin_access, UserIdentity
 from app.core.rate_limit import limiter

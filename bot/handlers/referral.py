@@ -36,7 +36,7 @@ async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 stats_response.raise_for_status()
                 stats_data = stats_response.json()
                 break  # Success
-            except (httpx.RemoteProtocolError, httpx.ConnectError) as conn_error:
+            except (httpx.RemoteProtocolError, httpx.ConnectError):
                 if attempt < max_retries:
                     await BackendAPIClient.reset_client()
                 else:
@@ -74,7 +74,7 @@ async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"⚠️ Error fetching referral information: {e.response.status_code}\n"
             f"Please try again later."
         )
-    except Exception as e:
+    except Exception:
         await update.message.reply_text(
-            f"⚠️ An error occurred. Please try again later."
+            "⚠️ An error occurred. Please try again later."
         )

@@ -67,8 +67,8 @@ async def lifespan(app: FastAPI):
     security_errors = settings.validate_production_settings()
     if security_errors:
         error_msg = (
-            f"SECURITY: Production security validation failed:\n"
-            f"  - " + "\n  - ".join(security_errors)
+            "SECURITY: Production security validation failed:\n"
+            "  - " + "\n  - ".join(security_errors)
         )
         logger.error(error_msg)
         if settings.is_production:

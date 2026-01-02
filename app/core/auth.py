@@ -12,7 +12,7 @@ import hmac
 import time
 import hashlib
 import logging
-from typing import Tuple, Optional
+from typing import Optional
 from fastapi import Header, HTTPException, Depends
 from app.core.config import settings
 
