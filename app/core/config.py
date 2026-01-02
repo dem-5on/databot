@@ -73,7 +73,7 @@ class Settings(BaseSettings):
     MAX_KEEPALIVE_CONNECTIONS: int = 20
     MAX_CONNECTIONS: int = 100
 
-    ALLOWED_ORIGINS: List[str] = ["*"]
+    ALLOWED_ORIGINS: List[str] = [""]
     UVICORN_WORKERS: int
 
     # Celery Configuration
