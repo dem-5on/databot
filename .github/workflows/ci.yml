@@ -130,6 +130,7 @@ jobs:
     name: Deploy to EC2
     needs: build
     runs-on: ubuntu-latest
+    environment: cicd
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - name: Deploy via SSH
