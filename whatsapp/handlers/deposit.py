@@ -273,8 +273,12 @@ async def handle_phone(phone_number: str, phone_input: str, bot) -> None:
                 logger.error(f"Missing reference in deposit init response: {data}")
                 raise ValueError("Failed to get transaction reference from server")
             
-            # Store reference and move to OTP state
-            bot.update_user_state_data(normalized_phone, deposit_reference=reference)
+            # Store reference and user_id, then move to OTP state
+            bot.update_user_state_data(
+                normalized_phone, 
+                deposit_reference=reference,
+                deposit_user_id=str(user["id"])  # Store user_id for auth consistency
+            )
             bot.set_user_state(normalized_phone, bot.STATE_DEPOSIT_OTP)
             
             await notifier.send_interactive_message(
@@ -337,6 +341,9 @@ async def handle_otp(phone_number: str, otp: str, bot) -> None:
         normalized_phone = normalize_phone_number(phone_number)
         notifier = WhatsAppNotifierService()
         state_data = bot.get_user_state(normalized_phone)[1]
+        
+        # Get user_id for auth - must match what was used during init
+        user_id = state_data.get("deposit_user_id")
         reference = state_data.get("deposit_reference")
         
         if not reference:
@@ -351,11 +358,21 @@ async def handle_otp(phone_number: str, otp: str, bot) -> None:
         try:
             logger.info(f"Submitting OTP for reference: {reference}")
             
+            if not user_id:
+                logger.error(f"No user_id in state data for {normalized_phone}")
+                await notifier.send_text_message(
+                    normalized_phone,
+                    "❌ Session expired. Please start deposit again."
+                )
+                bot.clear_user_state(normalized_phone)
+                return
+            
             max_retries = 2
             for attempt in range(max_retries + 1):
                 try:
                     client = BackendAPIClient.get_client()
-                    auth_headers = BackendAPIClient.get_auth_headers(normalized_phone, "whatsapp")
+                    # Use user_id (database UUID) for auth - must match transaction.user_id
+                    auth_headers = BackendAPIClient.get_auth_headers(user_id, "whatsapp")
                     response = await client.post(
                         f"{settings.BACKEND_API_URL}/api/v1/wallet/deposit/confirm",
                         json={
@@ -399,7 +416,7 @@ async def handle_otp(phone_number: str, otp: str, bot) -> None:
                 try:
                     logger.info(f"Verifying transaction: {reference}")
                     client = BackendAPIClient.get_client()
-                    auth_headers = BackendAPIClient.get_auth_headers(normalized_phone, "whatsapp")
+                    auth_headers = BackendAPIClient.get_auth_headers(user_id, "whatsapp")
                     verify_response = await client.post(
                         f"{settings.BACKEND_API_URL}/api/v1/wallet/deposit/verify/{reference}",
                         headers=auth_headers,
@@ -431,7 +448,7 @@ async def handle_otp(phone_number: str, otp: str, bot) -> None:
                         # Second verification attempt
                         try:
                             client = BackendAPIClient.get_client()
-                            auth_headers2 = BackendAPIClient.get_auth_headers(normalized_phone, "whatsapp")
+                            auth_headers2 = BackendAPIClient.get_auth_headers(user_id, "whatsapp")
                             verify_response2 = await client.post(
                                 f"{settings.BACKEND_API_URL}/api/v1/wallet/deposit/verify/{reference}",
                                 headers=auth_headers2,

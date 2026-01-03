@@ -4,9 +4,10 @@ import asyncio
 from decimal import Decimal
 from telegram import Update
 from app.core.config import settings
+from app.utils.backend_client import BackendAPIClient
+from app.services.settings_service import SettingsService
 from telegram.ext import ContextTypes, ConversationHandler
 from app.utils.phone_utils import validate_phone_number, detect_network, normalize_phone_to_local
-from app.utils.backend_client import BackendAPIClient
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,6 @@ async def deposit_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle amount input."""
     try:
         # Get dynamic deposit limits
-        from app.services.settings_service import SettingsService
         settings_service = SettingsService()
         min_deposit = await settings_service.get_min_deposit_amount()
         max_deposit = await settings_service.get_max_deposit_amount()
@@ -113,9 +113,16 @@ async def deposit_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "AIRTELTIGO": "AirtelTigo"
     }
     
+    # Fetch database user to get their ID for consistent auth
+    from app.services.user_service import UserService
+    user_service = UserService()
+    db_user, _ = await user_service.get_or_create_telegram_user(telegram_id)
+    db_user_id = str(db_user["id"])
+    
     # Call backend API
     try:
-        headers = BackendAPIClient.get_auth_headers(telegram_id, "telegram")
+        # Use database user ID for auth to match transaction.user_id
+        headers = BackendAPIClient.get_auth_headers(db_user_id, "telegram")
         logger.info(f"Initializing deposit: telegram_id={telegram_id}, amount={amount}, phone={normalized_phone}, provider={network}")
         
         # Retry logic for connection errors
@@ -159,8 +166,9 @@ async def deposit_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error(f"Missing reference in deposit init response: {data}")
             raise ValueError("Failed to get transaction reference from server")
 
-        # Store reference for OTP submission
+        # Store reference and user_id for OTP submission
         context.user_data['deposit_reference'] = reference
+        context.user_data['deposit_user_id'] = db_user_id  # Store for auth consistency
 
         # Try to send confirmation message, but don't fail if Telegram API times out
         try:
@@ -250,9 +258,20 @@ async def deposit_otp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Submit OTP to backend
     try:
-        user = update.effective_user
-        telegram_id = str(user.id)
-        headers = BackendAPIClient.get_auth_headers(telegram_id, "telegram")
+        # Get stored user_id for auth consistency
+        db_user_id = context.user_data.get('deposit_user_id')
+        
+        if not db_user_id:
+            # Fallback: fetch from database
+            user = update.effective_user
+            telegram_id = str(user.id)
+            from app.services.user_service import UserService
+            user_service = UserService()
+            db_user, _ = await user_service.get_or_create_telegram_user(telegram_id)
+            db_user_id = str(db_user["id"])
+        
+        # Use database user ID for auth to match transaction.user_id
+        headers = BackendAPIClient.get_auth_headers(db_user_id, "telegram")
         
         logger.info(f"Submitting OTP for reference: {reference}")
         
