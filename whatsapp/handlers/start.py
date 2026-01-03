@@ -89,6 +89,7 @@ async def start_handler(phone_number: str, bot, referral_code: str = None) -> No
                 f"• Data bundle delivery is not instant. Some numbers may receive data faster while others take some time.\n\n"
                 f"• No refunds will be issued for wrong transactions or incorrect phone numbers.\n\n"
                 f"• Please verify your phone number carefully before making a purchase.\n\n"
+                f"Working hours: 7am - 10pm\n\n"
                 f"Select an option from the menu:"
             )
         else:

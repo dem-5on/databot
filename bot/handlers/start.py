@@ -45,15 +45,14 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📜 View transaction history\n"
         "🎯 Referral program - Earn rewards!\n"
         "❓ Get help\n\n"
-        " ⚠️ IMPORTANT NOTICE:\n"
+        " ⚠️ IMPORTANT NOTICE:\n\n"
+        "Working hours: 7am - 10pm\n\n"
 
-        "Turbonet and Broadband Sim Cards are not eligible for this offer.\n"
+        "• Please do not place orders for the same number at the same time interval. One will be rejected and no refund will be provided.\n\n"
 
-        "• Please do not place orders for the same number at the same time interval. One will be rejected and no refund will be provided.\n"
+        "• Data bundle delivery is not instant. Some numbers may receive data faster while others take some time.\n\n"
 
-        "• Data bundle delivery is not instant. Some numbers may receive data faster while others take some time.\n"
-
-        "• No refunds will be issued for wrong transactions or incorrect phone numbers.\n"
+        "• No refunds will be issued for wrong transactions or incorrect phone numbers.\n\n"
 
         "• Please verify your phone number carefully before making a purchase.\n\n"
         "Select an option from the menu:"

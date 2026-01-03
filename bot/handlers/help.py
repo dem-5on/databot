@@ -27,6 +27,7 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• No refunds will be issued for wrong transactions or incorrect phone numbers.\n\n"
 
         "• Please verify your phone number carefully before making a purchase.\n\n"
+        "Working hours: 7am - 10pm\n\n"
         "❓ Need more help?\n"
         "Contact the admin/support for assistance.\n"
         "WhatsApp: https://wa.me/message/M34LEOVGZGOZP1\n"
