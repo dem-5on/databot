@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Optional
+from typing import Optional, List
 from decimal import Decimal
 from app.core.config import settings
 from datetime import datetime, timedelta
@@ -955,3 +955,70 @@ async def adjust_user_balance(
     except Exception as e:
         logger.error(f"Error adjusting balance for user {user_id}: {type(e).__name__}")
         raise HTTPException(status_code=500, detail=safe_error_response(e, "adjusting balance"))
+
+
+@router.post("/broadcast")
+async def broadcast_message(
+    platform: str = Query(..., pattern="^(telegram|whatsapp|both)$", description="Target platform"),
+    message: str = Query(..., min_length=1, max_length=4096, description="Message to broadcast"),
+    user_ids: Optional[str] = Query(None, description="Comma-separated user IDs (telegram_ids or phone numbers). Leave empty for all users."),
+    batch_size: int = Query(20, ge=1, le=100, description="Number of messages per batch"),
+    interval_seconds: int = Query(300, ge=10, le=3600, description="Seconds between batches"),
+    _: str = Depends(verify_dashboard_token)
+):
+    """
+    Send broadcast message to users on specified platform(s).
+    
+    The broadcast runs as a background Celery task. Returns task IDs for tracking.
+    
+    - **platform**: "telegram", "whatsapp", or "both"
+    - **message**: Message text to send
+    - **user_ids**: Optional comma-separated list. If omitted, sends to ALL users.
+    - **batch_size**: How many users to message per batch (default: 20)
+    - **interval_seconds**: Wait time between batches (default: 300 = 5 min)
+    """
+    from app.tasks import broadcast_telegram, broadcast_whatsapp
+    
+    # Parse user_ids if provided
+    parsed_user_ids = None
+    if user_ids:
+        parsed_user_ids = [uid.strip() for uid in user_ids.split(",") if uid.strip()]
+        if not parsed_user_ids:
+            parsed_user_ids = None
+    
+    task_ids = {}
+    
+    try:
+        if platform in ("telegram", "both"):
+            task = broadcast_telegram.delay(
+                message=message,
+                user_ids=parsed_user_ids,
+                batch_size=batch_size,
+                interval_seconds=interval_seconds
+            )
+            task_ids["telegram"] = task.id
+            logger.info(f"Started Telegram broadcast task: {task.id}")
+        
+        if platform in ("whatsapp", "both"):
+            task = broadcast_whatsapp.delay(
+                message=message,
+                user_ids=parsed_user_ids,
+                batch_size=batch_size,
+                interval_seconds=interval_seconds
+            )
+            task_ids["whatsapp"] = task.id
+            logger.info(f"Started WhatsApp broadcast task: {task.id}")
+        
+        return {
+            "status": "queued",
+            "message": f"Broadcast queued for {platform}",
+            "task_ids": task_ids,
+            "settings": {
+                "batch_size": batch_size,
+                "interval_seconds": interval_seconds,
+                "target_users": "all" if not parsed_user_ids else len(parsed_user_ids)
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error starting broadcast: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to start broadcast: {str(e)}")
