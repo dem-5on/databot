@@ -1,6 +1,23 @@
 from typing import List, Dict
 
 
+def format_capacity(capacity: str) -> str:
+    """
+    Format capacity to ensure it has proper unit suffix (GB/MB).
+    If no unit is present, assumes GB.
+    
+    Args:
+        capacity: Capacity string from database (e.g., "1", "100", "1GB", "500MB")
+        
+    Returns:
+        Formatted capacity with unit (e.g., "1GB", "100GB", "500MB")
+    """
+    cap = str(capacity).strip().upper()
+    if "GB" in cap or "MB" in cap:
+        return cap  # Already has unit
+    return f"{cap}GB"  # Default to GB
+
+
 def get_main_menu_buttons() -> List[Dict[str, str]]:
     """
     Get main menu buttons.
@@ -69,7 +86,8 @@ def get_bundle_list_section(bundles: List[dict], network: str) -> Dict[str, any]
     """
     rows = []
     for bundle in bundles[:10]:  # WhatsApp allows max 10 items per section
-        label = f"{bundle['capacity']} - GHS {bundle['price']}"
+        capacity = format_capacity(bundle['capacity'])
+        label = f"{capacity} - GHS {bundle['price']}"
         rows.append({
             "id": f"bundle_{bundle['id']}",
             "title": label
@@ -94,7 +112,8 @@ def get_bundle_buttons_simple(bundles: List[dict]) -> List[Dict[str, str]]:
     """
     buttons = []
     for bundle in bundles[:3]:
-        label = f"{bundle['capacity']} - GHS {bundle['price']}"
+        capacity = format_capacity(bundle['capacity'])
+        label = f"{capacity} - GHS {bundle['price']}"
         buttons.append({
             "id": f"bundle_{bundle['id']}",
             "title": label[:20]  # WhatsApp button title max 20 characters

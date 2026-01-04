@@ -7,7 +7,7 @@ from app.services.wallet_service import WalletService
 from app.services.whatsapp_notifier import WhatsAppNotifierService
 from app.utils.phone_utils import normalize_phone_number, validate_phone_number, detect_network
 from app.utils.backend_client import BackendAPIClient
-from whatsapp.keyboard import get_network_buttons, get_back_cancel_buttons, get_bundle_list_section, get_bundle_buttons_simple
+from whatsapp.keyboard import get_network_buttons, get_back_cancel_buttons, get_bundle_list_section, get_bundle_buttons_simple, format_capacity
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +94,7 @@ async def handle_network(phone_number: str, network: str, bot) -> None:
                 bundle_buttons.extend(get_back_cancel_buttons())
                 
                 bundle_list_text = "\n".join([
-                    f"• {b['capacity']} - GHS {b['price']}"
+                    f"• {format_capacity(b['capacity'])} - GHS {b['price']}"
                     for b in bundles
                 ])
                 
@@ -191,7 +191,7 @@ async def handle_bundle(phone_number: str, bundle_id: str, bot) -> None:
             (
                 f"📱 Bundle Selected\n\n"
                 f"Network: {NETWORK_DISPLAY.get(selected_network, selected_network)}\n"
-                f"Capacity: {selected_bundle['capacity']}GB\n"
+                f"Capacity: {format_capacity(selected_bundle['capacity'])}\n"
                 f"Price: GHS {selected_bundle['price']}\n\n"
                 f"‼️‼️‼️‼️‼️‼️‼️‼️‼️‼️‼️‼️\n"
                 f"Bundle sent to wrong phone number will not be refunded\n\n"
@@ -304,7 +304,7 @@ async def handle_phone(phone_number: str, phone_input: str, bot) -> None:
                     normalized_phone,
                     (
                         f"❌ Insufficient balance.\n\n"
-                        f"Account balance is GHS {balance}, Required GHS {bundle_price} to buy {selected_bundle['capacity']}GB bundle."
+                        f"Account balance is GHS {balance}, Required GHS {bundle_price} to buy {format_capacity(selected_bundle['capacity'])} bundle."
                         f"\n\n"
                         f"Please use the deposit button to top up your account to continue."
                     )
@@ -369,7 +369,7 @@ async def handle_phone(phone_number: str, phone_input: str, bot) -> None:
                     normalized_phone,
                     (
                         f"✅ Order Created Successfully!\n\n"
-                        f"Bundle: {selected_bundle['capacity']}\n"
+                        f"Bundle: {format_capacity(selected_bundle['capacity'])}\n"
                         f"Network: {NETWORK_DISPLAY.get(selected_network, selected_network)}\n"
                         f"Phone: {normalized_bundle_phone}\n"
                         f"Price: GHS {selected_bundle['price']}\n"

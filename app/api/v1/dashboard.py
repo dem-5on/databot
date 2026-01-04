@@ -809,3 +809,149 @@ async def sync_order_status_endpoint(
     except Exception as e:
         logger.error(f"Error syncing order {order_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to sync order: {str(e)}")
+
+
+@router.delete("/users/{user_id}")
+async def delete_user(
+    user_id: str,
+    _: str = Depends(verify_dashboard_token)
+):
+    """
+    Delete a user and all associated data.
+    
+    WARNING: This is a destructive operation. Depending on DB cascade rules,
+    this may also delete related records (wallet, orders, transactions).
+    """
+    # SECURITY: Validate user_id format
+    try:
+        validate_uuid_format(user_id, "User ID")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    user_repo = BaseUserRepository()
+    
+    # Check if user exists
+    user = await user_repo.get_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    try:
+        # Delete from telegram/whatsapp tables first to avoid FK issues
+        from app.repository.telegram_user_repo import TelegramUserRepository
+        from app.repository.whatsapp_user_repo import WhatsAppUserRepository
+        
+        telegram_repo = TelegramUserRepository()
+        whatsapp_repo = WhatsAppUserRepository()
+        
+        # Get platform users (for logging)
+        telegram_user = await telegram_repo.get_by_user_id(user_id)
+        whatsapp_user = await whatsapp_repo.get_by_user_id(user_id)
+        
+        # Delete platform records
+        if telegram_user:
+            await telegram_repo.delete(telegram_user["id"])
+        if whatsapp_user:
+            await whatsapp_repo.delete(whatsapp_user["id"])
+        
+        # Delete wallet
+        wallet_repo = WalletRepository()
+        wallet = await wallet_repo.get_by_user_id(user_id)
+        if wallet:
+            await wallet_repo.delete(wallet["id"])
+        
+        # Delete base user
+        await user_repo.delete(user_id)
+        
+        logger.info(f"Deleted user {user_id}")
+        return {"status": "success", "message": "User deleted successfully"}
+        
+    except Exception as e:
+        logger.error(f"Error deleting user {user_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete user: {str(e)}")
+
+
+@router.post("/users/{user_id}/balance")
+async def adjust_user_balance(
+    user_id: str,
+    amount: float = Query(..., gt=0, description="Amount to credit or debit (must be positive)"),
+    type: str = Query(..., pattern="^(credit|debit)$", description="Operation type: credit or debit"),
+    reason: str = Query(..., min_length=5, description="Reason for the adjustment"),
+    _: str = Depends(verify_dashboard_token)
+):
+    """
+    Adjust user balance by crediting or debiting their wallet.
+    
+    - **credit**: Add to balance
+    - **debit**: Subtract from balance (fails if insufficient funds)
+    """
+    # SECURITY: Validate user_id format
+    try:
+        validate_uuid_format(user_id, "User ID")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    # Validate amount limits
+    max_amount = getattr(settings, 'MAX_MANUAL_CREDIT_AMOUNT', 10000.0)
+    if amount > max_amount:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Amount exceeds maximum allowed adjustment of GHS {max_amount}"
+        )
+    
+    # Verify user exists
+    user_repo = BaseUserRepository()
+    user = await user_repo.get_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    try:
+        wallet_repo = WalletRepository()
+        transaction_repo = TransactionRepository()
+        import uuid
+        
+        # Get or create wallet
+        wallet = await wallet_repo.get_or_create_wallet(user_id)
+        wallet_id = wallet["id"]
+        
+        reference = f"ADJ-{uuid.uuid4().hex[:8].upper()}"
+        
+        if type == "credit":
+            # Credit the wallet
+            new_wallet = await wallet_repo.credit_balance(wallet_id, Decimal(str(amount)))
+            tx_type = "deposit"
+        else:
+            # Debit the wallet
+            new_wallet = await wallet_repo.debit_balance(wallet_id, Decimal(str(amount)))
+            tx_type = "withdrawal"
+        
+        # Create transaction record
+        await transaction_repo.create_transaction(
+            user_id=user_id,
+            transaction_type=tx_type,
+            amount=Decimal(str(amount)),
+            currency="GHS",
+            reference=reference,
+            status="completed",
+            provider="admin_manual",
+            raw_payload={
+                "reason": reason.strip(),
+                "type": f"manual_{type}",
+                "adjusted_at": datetime.utcnow().isoformat()
+            }
+        )
+        
+        logger.info(f"Manual {type}: user={user_id}, amount={amount}, reason={reason[:50]}")
+        
+        return {
+            "status": "success",
+            "message": f"Successfully {'credited' if type == 'credit' else 'debited'} GHS {amount}",
+            "wallet": new_wallet
+        }
+    except ValueError as e:
+        error_msg = str(e)
+        if "insufficient" in error_msg.lower():
+            raise HTTPException(status_code=400, detail="Insufficient balance for debit")
+        raise HTTPException(status_code=400, detail=error_msg)
+    except Exception as e:
+        logger.error(f"Error adjusting balance for user {user_id}: {type(e).__name__}")
+        raise HTTPException(status_code=500, detail=safe_error_response(e, "adjusting balance"))
