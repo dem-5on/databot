@@ -87,6 +87,7 @@ async def list_dashboard_users(
     List users with optional search and platform filter.
     """
     user_repo = BaseUserRepository()
+    wallet_repo = WalletRepository()
     
     # Import platform-specific repos
     from app.repository.telegram_user_repo import TelegramUserRepository
@@ -97,15 +98,17 @@ async def list_dashboard_users(
     
     try:
         # Parallel fetch for performance
-        users, telegram_users, whatsapp_users = await asyncio.gather(
+        users, telegram_users, whatsapp_users, wallets = await asyncio.gather(
             user_repo.get_all(limit=1000, order_by="created_at", ascending=False),
             telegram_repo.get_all(limit=1000),
-            whatsapp_repo.get_all(limit=1000)
+            whatsapp_repo.get_all(limit=1000),
+            wallet_repo.get_all(limit=1000)
         )
         
         # Create lookup maps by user_id
         telegram_map = {t.get("user_id"): t for t in telegram_users if t.get("user_id")}
         whatsapp_map = {w.get("user_id"): w for w in whatsapp_users if w.get("user_id")}
+        wallet_map = {w.get("user_id"): w for w in wallets if w.get("user_id")}
         
         # Enrich users with platform data
         enriched_users = []
@@ -126,12 +129,16 @@ async def list_dashboard_users(
                 user_platform = "unknown"
                 identifier = None
             
+            wallet_data = wallet_map.get(user_id)
+            balance = wallet_data.get("balance", "0.00") if wallet_data else "0.00"
+            
             enriched_user = {
                 **user,
                 "platform": user_platform,
                 "telegram_id": telegram_data.get("telegram_id") if telegram_data else None,
                 "phone": whatsapp_data.get("phone") if whatsapp_data else (telegram_data.get("phone") if telegram_data else None),
                 "identifier": identifier,
+                "balance": balance,
             }
             enriched_users.append(enriched_user)
         
