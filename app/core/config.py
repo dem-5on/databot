@@ -67,7 +67,7 @@ class Settings(BaseSettings):
     DASHBOARD_TOKEN: str = ""  # 64-character token for monitoring dashboard access
 
     # Business Logic Limits
-    MAX_MANUAL_CREDIT_AMOUNT: float = 10.0  # Maximum amount that can be manually credited at once
+    MAX_MANUAL_CREDIT_AMOUNT: float = 100.0  # Maximum amount that can be manually credited at once
 
     # HTTP Connection Pool Settings
     MAX_KEEPALIVE_CONNECTIONS: int = 20

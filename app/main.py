@@ -7,34 +7,32 @@ from app.core.config import settings
 from app.core.rate_limit import limiter
 from contextlib import asynccontextmanager
 from slowapi.errors import RateLimitExceeded
-from starlette.middleware.gzip import GZipMiddleware
-from bot.telegram_bot import start_webhook_mode, stop_webhook_mode
 from slowapi import _rate_limit_exceeded_handler
 from app.api.v1.sync import router as sync_bundles
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.users import router as users_router
-from app.utils.backend_client import BackendAPIClient
+from starlette.middleware.gzip import GZipMiddleware
 from app.api.v1.wallet import router as wallet_router
 from app.api.v1.orders import router as orders_router
+from app.api.v1.system import router as system_router
+from app.api.v1.health import router as health_router
+from app.utils.backend_client import BackendAPIClient
 from app.api.v1.bundles import router as bundles_router
+from app.tasks.health_monitor import monitor_health_task
 from app.api.v1.admin.tasks import router as admin_router
 from app.api.v1.referrals import router as referrals_router
-from app.api.v1.webhooks.telegram_webhook import set_bot_application
+from app.api.v1.dashboard import router as dashboard_router
 from app.services.blessdatahub_client import BlessdatahubClient
 from app.services.whatsapp_notifier import WhatsAppNotifierService
+from bot.telegram_bot import start_webhook_mode, stop_webhook_mode
+from app.api.v1.webhooks.telegram_webhook import set_bot_application
 from app.api.v1.webhooks.paystack import router as paystack_webhook_router
 from app.api.v1.webhooks.whatsapp import router as whatsapp_webhook_router
 from app.api.v1.webhooks.telegram_webhook import router as telegram_webhook_router
-from app.api.v1.dashboard import router as dashboard_router
-from app.api.v1.system import router as system_router
-from app.api.v1.health import router as health_router
-from app.tasks.health_monitor import monitor_health_task
-
 
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
