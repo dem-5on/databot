@@ -69,5 +69,7 @@ test/
 .dockerignore
 
 /frontend
-.agent/*
+/.agent/*
+*.pdf
+*.sql
 *.pdf
