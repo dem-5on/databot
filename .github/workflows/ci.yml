@@ -1,0 +1,161 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install linting tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff
+
+      - name: Run linter
+        run: |
+          ruff check app/ bot/ --ignore E501
+
+  build:
+    runs-on: ubuntu-latest
+    needs: lint
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Validate imports and syntax
+        env:
+          # Supabase (dummy values for import validation)
+          SUPABASE_URL: https://dummy.supabase.co
+          SUPABASE_KEY: dummy_supabase_key
+          # Paystack
+          PAYSTACK_SECRET_KEY: sk_test_dummy
+          PAYSTACK_PUBLIC_KEY: pk_test_dummy
+          # Telegram
+          TELEGRAM_BOT_TOKEN: dummy_token
+          TELEGRAM_ADMIN_IDS: "123456789"
+          # WhatsApp
+          WHATSAPP_BUSINESS_PHONE: "233000000000"
+          WHATSAPP_PHONE_NUMBER_ID: dummy_phone_id
+          WHATSAPP_ACCESS_TOKEN: dummy_access_token
+          WHATSAPP_APP_ID: dummy_app_id
+          WHATSAPP_APP_SECRET: dummy_app_secret
+          WHATSAPP_VERIFY_TOKEN: dummy_verify_token
+          WHATSAPP_ADMIN_NUMBERS: "233000000000"
+          # Blessdatahub
+          BLESSDATAHUB_API_KEY: dummy_api_key
+          BLESSDATAHUB_API_SECRET: dummy_api_secret
+          BLESSDATAHUB_PURCHASE_TIMEOUT: "60"
+          # DatamartGH (deprecated but still in config)
+          DATAMART_API_KEY: dummy_key
+          # Other settings
+          PURCHASE_TIMEOUT: "60"
+          MINIMUM_DEPOSIT_AMOUNT: "1"
+          REFERRAL_BONUS_AMOUNT: "0.5"
+          PRICE_MARKUP_PERCENTAGE: "10"
+          UVICORN_WORKERS: "1"
+          # Celery
+          CELERY_BROKER_URL: redis://localhost:6379/0
+          CELERY_RESULT_BACKEND: redis://localhost:6379/0
+        run: |
+          python -c "from app.main import app; print('✅ App imports successfully')"
+          python -c "from app.celery_app import celery_app; print('✅ Celery app imports successfully')"
+
+      - name: Run tests
+        env:
+          # Supabase (dummy values for testing)
+          SUPABASE_URL: https://dummy.supabase.co
+          SUPABASE_KEY: dummy_supabase_key
+          # Paystack
+          PAYSTACK_SECRET_KEY: sk_test_dummy
+          PAYSTACK_PUBLIC_KEY: pk_test_dummy
+          # Telegram
+          TELEGRAM_BOT_TOKEN: dummy_token
+          TELEGRAM_ADMIN_IDS: "123456789"
+          # WhatsApp
+          WHATSAPP_BUSINESS_PHONE: "233000000000"
+          WHATSAPP_PHONE_NUMBER_ID: dummy_phone_id
+          WHATSAPP_ACCESS_TOKEN: dummy_access_token
+          WHATSAPP_APP_ID: dummy_app_id
+          WHATSAPP_APP_SECRET: dummy_app_secret
+          WHATSAPP_VERIFY_TOKEN: dummy_verify_token
+          WHATSAPP_ADMIN_NUMBERS: "233000000000"
+          # Blessdatahub
+          BLESSDATAHUB_API_KEY: dummy_api_key
+          BLESSDATAHUB_API_SECRET: dummy_api_secret
+          BLESSDATAHUB_PURCHASE_TIMEOUT: "60"
+          # Other settings
+          PURCHASE_TIMEOUT: "60"
+          MINIMUM_DEPOSIT_AMOUNT: "1"
+          REFERRAL_BONUS_AMOUNT: "0.5"
+          PRICE_MARKUP_PERCENTAGE: "10"
+          UVICORN_WORKERS: "1"
+          # Celery
+          CELERY_BROKER_URL: redis://localhost:6379/0
+          CELERY_RESULT_BACKEND: redis://localhost:6379/0
+        run: pytest -v --tb=short
+
+  deploy:
+    name: Deploy to EC2
+    needs: build
+    runs-on: ubuntu-latest
+    environment: cicd
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          script: |
+            # Navigate to project directory (update this path if different)
+            cd ~/databot
+
+            # Pull latest changes
+            git pull origin main
+
+            # Rebuild and restart containers
+            # Using docker compose (v2) or docker-compose (v1) depending on availability
+            if command -v docker-compose &> /dev/null; then
+                docker-compose down
+                docker-compose up -d --build --remove-orphans
+            else
+                docker compose down
+                docker compose up -d --build --remove-orphans
+            fi
+
+            # Prune unused images to save space
+            docker image prune -f

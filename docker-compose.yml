@@ -1,0 +1,92 @@
+version: "3.8"
+
+services:
+  # Redis - Message broker for Celery
+  redis:
+    image: redis:7-alpine
+    container_name: databot_redis
+    # Port not exposed externally - only needed for internal Docker communication
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: databot_backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - UVICORN_WORKERS=${UVICORN_WORKERS:-4}
+      # Telegram Webhook (Production)
+      - TELEGRAM_USE_WEBHOOK=${TELEGRAM_USE_WEBHOOK:-true}
+      - TELEGRAM_WEBHOOK_URL=${TELEGRAM_WEBHOOK_URL}
+      - TELEGRAM_WEBHOOK_SECRET=${TELEGRAM_WEBHOOK_SECRET}
+      # Blessdatahub API
+      - BLESSDATAHUB_API_KEY=${BLESSDATAHUB_API_KEY}
+      - BLESSDATAHUB_API_SECRET=${BLESSDATAHUB_API_SECRET}
+      # Pricing
+      - PRICE_MARKUP_PERCENTAGE=${PRICE_MARKUP_PERCENTAGE:-10}
+    volumes:
+      - .:/app
+    command: ./app/entrypoint.sh
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # Celery Worker - Processes background tasks
+  celery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: databot_celery_worker
+    env_file:
+      - .env
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - .:/app
+    command: celery -A app.celery_app worker --loglevel=info
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # Celery Beat - Scheduled tasks (only 1 instance!)
+  celery-beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: databot_celery_beat
+    env_file:
+      - .env
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - .:/app
+    command: celery -A app.celery_app beat --loglevel=info
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  redis_data:
+# Note: PostgreSQL service removed - using Supabase managed database
+# Database migrations are handled via Supabase Dashboard SQL Editor

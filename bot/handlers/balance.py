@@ -1,0 +1,54 @@
+from telegram import Update
+from telegram.ext import ContextTypes
+import httpx
+from app.core.config import settings
+from app.utils.backend_client import BackendAPIClient
+
+
+async def balance_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle balance check."""
+    user = update.effective_user
+    telegram_id = str(user.id)
+    
+    try:
+        headers = BackendAPIClient.get_auth_headers(telegram_id, "telegram")
+        
+        # Retry logic for connection errors
+        max_retries = 2
+        for attempt in range(max_retries + 1):
+            try:
+                client = BackendAPIClient.get_client()
+                response = await client.get(
+                    f"{settings.BACKEND_API_URL}/api/v1/wallet/balance/{telegram_id}",
+                    headers=headers,
+                )
+                response.raise_for_status()
+                break  # Success
+            except (httpx.RemoteProtocolError, httpx.ConnectError):
+                if attempt < max_retries:
+                    await BackendAPIClient.reset_client()
+                else:
+                    raise
+        
+        data = response.json()
+        
+        balance = data.get("balance", 0)
+        currency = data.get("currency", "GHS")
+        
+        # Format balance to 2 decimal places
+        formatted_balance = f"{float(balance):.2f}"
+        
+        await update.message.reply_text(
+            f"💼 Your Wallet Balance\n\n"
+            f"Amount: {currency} {formatted_balance}\n\n"
+            "Use ➕ Deposit to add funds to your wallet."
+        )
+    except httpx.HTTPStatusError as e:
+        await update.message.reply_text(
+            f"⚠️ Error fetching balance: {e.response.status_code}\n"
+            f"Please try again later."
+        )
+    except Exception:
+        await update.message.reply_text(
+            "⚠️ An error occurred. Please try again later."
+        )
