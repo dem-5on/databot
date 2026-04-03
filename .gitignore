@@ -46,7 +46,6 @@ venv.bak/
 .sql
 *.sql
 
-
 # Logs
 *.log
 logs/
@@ -64,6 +63,7 @@ alembic/versions/*.pyc
 htmlcov/
 .tox/
 test/
+/tests
 
 # Docker
 .dockerignore
@@ -71,4 +71,3 @@ test/
 /frontend
 .agent/*
 *.pdf
-/tests
