@@ -1,10 +1,11 @@
-import logging
 import hmac
+import json
+import logging
 import hashlib
-from fastapi import APIRouter, Request, HTTPException, Query
-from app.core.rate_limit import limiter
 from app.core.config import settings
+from app.core.rate_limit import limiter
 from whatsapp.whatsapp_bot import WhatsAppBot
+from fastapi import APIRouter, Request, HTTPException, Query
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +55,6 @@ async def handle_webhook(request: Request):
                 raise HTTPException(status_code=403, detail="Invalid signature")
         
         # Parse JSON payload
-        import json
         payload = json.loads(body.decode('utf-8'))
         
         # WhatsApp sends events in 'entry' array

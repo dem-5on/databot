@@ -1,14 +1,15 @@
 import logging
 from typing import Optional
 from pydantic import BaseModel
-from fastapi import APIRouter, HTTPException, Query, Depends, Request
 from app.core.config import settings
-from app.core.auth import get_user_identity, verify_user_access, verify_admin_access, UserIdentity
 from app.core.rate_limit import limiter
-from app.api.schemas import UserHistoryResponseDTO, TransactionHistoryItemDTO, OrderHistoryItemDTO
+from app.db.supabase_client import supabase
 from app.services.user_service import UserService
 from app.repository.order_repo import OrderRepository
 from app.repository.transaction_repo import TransactionRepository
+from fastapi import APIRouter, HTTPException, Query, Depends, Request
+from app.core.auth import get_user_identity, verify_user_access, verify_admin_access, UserIdentity
+from app.api.schemas import UserHistoryResponseDTO, TransactionHistoryItemDTO, OrderHistoryItemDTO
 
 
 logger = logging.getLogger(__name__)
@@ -212,7 +213,6 @@ async def debug_full_user_data(
             detail="Debug endpoint is not available in production"
         )
     
-    from app.db.supabase_client import supabase
     
     logger.info(f"FULL DEBUG: identifier_type={identifier_type}")
     

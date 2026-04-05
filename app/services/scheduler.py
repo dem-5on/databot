@@ -1,8 +1,8 @@
 """Scheduler service using Supabase repositories."""
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
+import logging
 from apscheduler.triggers.cron import CronTrigger
 from app.services.bundle_sync import BundleSyncService
-import logging
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 logger = logging.getLogger(__name__)
 

@@ -1,4 +1,5 @@
 import logging
+from uuid import uuid4
 from typing import Optional, List, Dict, Any
 from app.repository.base import BaseRepository
 
@@ -31,7 +32,6 @@ class SettingsRepository(BaseRepository):
             return await self.update(existing["id"], data)
         else:
             # Need ID for new record
-            from uuid import uuid4
             data["id"] = str(uuid4())
             return await self.create(data)
             

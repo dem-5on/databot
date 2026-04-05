@@ -1,7 +1,6 @@
-"""Repository for WhatsApp user operations."""
 import logging
-from typing import Optional, Dict, Any, Tuple
 from uuid import uuid4
+from typing import Optional, Dict, Any, Tuple
 from app.repository.base import BaseRepository
 
 logger = logging.getLogger(__name__)

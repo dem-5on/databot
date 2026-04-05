@@ -28,5 +28,5 @@ async def monitor_health_task():
             logger.error(f"Error in health monitoring task: {e}")
             
         # Wait for 60 seconds before next check
-        # In production, this might be configurable or handled by Celery Beat
+        # In production, this will be configurable or handled by Celery Beat
         await asyncio.sleep(60)

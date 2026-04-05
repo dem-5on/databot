@@ -1,6 +1,10 @@
+import uuid
 import logging
 import asyncio
+import redis.asyncio as redis
+from app.core.config import settings
 from contextlib import asynccontextmanager
+
 
 logger = logging.getLogger(__name__)
 
@@ -48,10 +52,7 @@ class DistributedLock:
     async def _get_redis(self):
         """Get Redis client lazily."""
         if self._redis is None:
-            try:
-                import redis.asyncio as redis
-                from app.core.config import settings
-                
+            try:                
                 # Parse Redis URL from Celery broker URL
                 redis_url = settings.CELERY_BROKER_URL
                 self._redis = redis.from_url(redis_url, decode_responses=True)
@@ -69,9 +70,7 @@ class DistributedLock:
         
         Returns:
             True if lock acquired, False otherwise
-        """
-        import uuid
-        
+        """        
         redis_client = await self._get_redis()
         if redis_client is None:
             # Fallback: no Redis available, allow operation (log warning)

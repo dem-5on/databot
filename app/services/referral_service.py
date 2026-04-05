@@ -1,4 +1,3 @@
-"""Referral service using Supabase repositories."""
 import uuid
 import string
 import secrets
@@ -6,9 +5,10 @@ import logging
 from decimal import Decimal
 from app.services.notifier import NotifierService
 from app.repository.user_repo import UserRepository
+from app.services.wallet_service import WalletService
+from app.services.settings_service import SettingsService
 from app.repository.referral_repo import ReferralRepository
 from app.repository.transaction_repo import TransactionRepository
-from app.services.wallet_service import WalletService
 from app.core.constants import TransactionType, TransactionStatus
 
 logger = logging.getLogger(__name__)
@@ -29,7 +29,6 @@ class ReferralService:
 
     async def get_referral_bonus_amount(self) -> Decimal:
         """Get current referral bonus amount from settings."""
-        from app.services.settings_service import SettingsService
         return Decimal(str(await SettingsService().get_referral_bonus_amount()))
 
     @staticmethod

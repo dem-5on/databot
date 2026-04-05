@@ -1,7 +1,7 @@
 import logging
-from typing import Optional, Dict, Any
 from uuid import uuid4
 from datetime import datetime
+from typing import Optional, Dict, Any
 from app.repository.base import BaseRepository
 
 logger = logging.getLogger(__name__)

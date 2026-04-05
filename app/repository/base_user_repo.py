@@ -1,7 +1,7 @@
 """Repository for base user operations."""
 import logging
-from typing import Optional, Dict, Any
 from uuid import uuid4
+from typing import Optional, Dict, Any
 from app.repository.base import BaseRepository
 from app.repository.telegram_user_repo import TelegramUserRepository
 from app.repository.whatsapp_user_repo import WhatsAppUserRepository

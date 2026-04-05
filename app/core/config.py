@@ -9,7 +9,8 @@ class Settings(BaseSettings):
     
     # Supabase - Required for database operations via REST API
     SUPABASE_URL: str
-    SUPABASE_KEY: str
+    SUPABASE_KEY: str  # Anon/public key for user-facing operations
+    SUPABASE_SERVICE_KEY: str = ""  # Service role key - bypasses RLS for server-side tasks
 
     # Paystack
     PAYSTACK_SECRET_KEY: str
@@ -34,8 +35,15 @@ class Settings(BaseSettings):
     WHATSAPP_APP_ID: str
     WHATSAPP_APP_SECRET: str
     WHATSAPP_VERIFY_TOKEN: str  # Custom token for webhook verification
+    WHATSAPP_WABA_ID: str = ""  # WhatsApp Business Account ID
     WHATSAPP_API_URL: str = "https://graph.facebook.com/v18.0"
-    WHATSAPP_ADMIN_NUMBERS: str  
+    WHATSAPP_ADMIN_NUMBERS: str
+
+    # WhatsApp Flows
+    WHATSAPP_FLOW_MODE: str = "draft"  # "draft" or "published"
+    WHATSAPP_FLOW_PRIVATE_KEY: str = ""  # RSA 2048-bit private key in PEM format (for AES key decryption)
+    WHATSAPP_BUY_BUNDLE_FLOW_ID: str = ""  # Meta-assigned Flow ID for the Buy Bundle flow
+    WHATSAPP_DEPOSIT_FLOW_ID: str = ""  # Meta-assigned Flow ID for the Deposit flow
 
     # Blessdatahub
     BLESSDATAHUB_API_URL: str = "https://www.blessdatahub.com/api"

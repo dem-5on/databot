@@ -1,0 +1,138 @@
+{
+  "version": "6.1",
+  "data_api_version": "3.0",
+  "routing_model": {
+    "AMOUNT_SCREEN": ["PHONE_SCREEN"],
+    "PHONE_SCREEN": []
+  },
+  "screens": [
+    {
+      "id": "AMOUNT_SCREEN",
+      "title": "Deposit Funds",
+      "data": {
+        "min_amount": {
+          "type": "number",
+          "__example__": 1
+        },
+        "max_amount": {
+          "type": "number",
+          "__example__": 1000
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "amount_form",
+            "children": [
+              {
+                "type": "TextHeading",
+                "text": "➕ Deposit Funds"
+              },
+              {
+                "type": "TextBody",
+                "text": "Top up your wallet using Mobile Money. You will receive a prompt on your phone to approve the payment."
+              },
+              {
+                "type": "TextInput",
+                "name": "deposit_amount",
+                "label": "Amount (GHS)",
+                "input-type": "number",
+                "required": true,
+                "helper-text": "Enter amount (e.g. 20)"
+              },
+              {
+                "type": "Footer",
+                "label": "Next",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": {
+                    "deposit_amount": "${form.deposit_amount}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "PHONE_SCREEN",
+      "title": "Mobile Money",
+      "terminal": true,
+      "success": true,
+      "data": {
+        "deposit_amount": {
+          "type": "string",
+          "__example__": "50"
+        },
+        "networks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "title": { "type": "string" }
+            }
+          },
+          "__example__": [
+            { "id": "MTN", "title": "MTN MoMo" },
+            { "id": "TELECEL", "title": "Telecel Cash" },
+            { "id": "AIRTELTIGO", "title": "AirtelTigo Money" }
+          ]
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "momo_form",
+            "children": [
+              {
+                "type": "TextHeading",
+                "text": "📱 Mobile Money Details"
+              },
+              {
+                "type": "TextBody",
+                "text": "Amount to deposit: GHS ${data.deposit_amount}"
+              },
+              {
+                "type": "TextBody",
+                "text": "After submitting, you will receive a MoMo prompt. Enter the OTP in the chat to confirm."
+              },
+              {
+                "type": "RadioButtonsGroup",
+                "name": "momo_network",
+                "label": "MoMo Network",
+                "required": true,
+                "data-source": "${data.networks}"
+              },
+              {
+                "type": "TextInput",
+                "name": "momo_phone",
+                "label": "MoMo Phone Number",
+                "input-type": "phone",
+                "required": true,
+                "helper-text": "Format: 0XXXXXXXXX or 233XXXXXXXXX"
+              },
+              {
+                "type": "Footer",
+                "label": "Initiate Payment 💳",
+                "on-click-action": {
+                  "name": "complete",
+                  "payload": {
+                    "deposit_amount": "${data.deposit_amount}",
+                    "momo_network": "${form.momo_network}",
+                    "momo_phone": "${form.momo_phone}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

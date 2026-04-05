@@ -1,6 +1,6 @@
 import logging
 from postgrest.exceptions import APIError
-from app.db.supabase_client import supabase
+from app.db.supabase_client import supabase_admin
 from typing import Optional, List, Dict, Any
 
 logger = logging.getLogger(__name__)
@@ -11,7 +11,10 @@ class BaseRepository:
     
     def __init__(self, table_name: str):
         self.table_name = table_name
-        self.client = supabase
+        # Use the service-role client so server-side writes bypass RLS.
+        # All auth/authz is enforced at the FastAPI layer, not the DB layer.
+        self.client = supabase_admin
+
     
     async def create(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """

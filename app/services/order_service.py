@@ -1,3 +1,5 @@
+from logging import getLogger
+from app.models.order import DeliveryStatus
 from app.services.notifier import NotifierService
 from app.repository.order_repo import OrderRepository
 from app.services.wallet_service import WalletService
@@ -191,7 +193,6 @@ class OrderService:
                 
             vendor_status = orders_data[0].get("status", "").lower()
             
-            from app.models.order import DeliveryStatus
             new_delivery_status = DeliveryStatus.PENDING.value
             
             if vendor_status in ["completed", "successful", "delivered", "success"]:
@@ -213,7 +214,6 @@ class OrderService:
             
         except Exception as e:
             # Log error but don't crash
-            from logging import getLogger
             logger = getLogger(__name__)
             logger.error(f"Failed to sync status for order {order_id}: {e}")
             return order

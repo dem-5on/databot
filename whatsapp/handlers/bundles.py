@@ -1,4 +1,5 @@
 import httpx
+import uuid
 import logging
 from decimal import Decimal
 from app.core.config import settings
@@ -21,29 +22,47 @@ NETWORK_DISPLAY = {
 
 async def start(phone_number: str, bot) -> None:
     """
-    Start bundles flow.
-    
-    Args:
-        phone_number: User's phone number
-        bot: WhatsAppBot instance
+    Start the Buy Bundle flow.
+
+    If WHATSAPP_BUY_BUNDLE_FLOW_ID is configured, launches the native
+    WhatsApp Flow (multi-screen interactive form). Falls back to the
+    legacy text-based menu if the Flow ID is not set.
     """
     try:
         normalized_phone = normalize_phone_number(phone_number)
         notifier = WhatsAppNotifierService()
 
-        # Set state to bundles network
-        bot.set_user_state(normalized_phone, bot.STATE_BUNDLES_NETWORK)
-        
-        await notifier.send_interactive_message(
-            normalized_phone,
-            "🌐 Browse Data Bundles\n\nSelect a network:",
-            get_network_buttons()
-        )
-        
+        flow_id = settings.WHATSAPP_BUY_BUNDLE_FLOW_ID
+        if flow_id:
+            # Use WhatsApp Flows (native interactive form)
+            flow_token = f"bundle_{normalized_phone}_{uuid.uuid4().hex[:8]}"
+            await notifier.send_flow_message(
+                phone_number=normalized_phone,
+                body_text=(
+                    "🌐 *Buy Data Bundle*\n\n"
+                    "Select your network, choose a bundle, and enter the recipient number — "
+                    "all in one seamless form."
+                ),
+                cta_text="Open Bundle Form",
+                flow_id=flow_id,
+                flow_token=flow_token,
+                screen_id="NETWORK_SCREEN",
+                flow_action="data_exchange",
+            )
+        else:
+            # Fallback: legacy interactive button menu
+            bot.set_user_state(normalized_phone, bot.STATE_BUNDLES_NETWORK)
+            await notifier.send_interactive_message(
+                normalized_phone,
+                "🌐 Browse Data Bundles\n\nSelect a network:",
+                get_network_buttons()
+            )
+
     except Exception as e:
         logger.error(f"Error in bundles start: {str(e)}", exc_info=True)
+        notifier = WhatsAppNotifierService()
         await notifier.send_text_message(
-            normalized_phone,
+            normalize_phone_number(phone_number),
             "❌ An error occurred. Please try again later."
         )
 
@@ -418,3 +437,148 @@ async def handle_phone(phone_number: str, phone_input: str, bot) -> None:
         )
         bot.clear_user_state(normalized_phone)
 
+async def handle_flow_completion(phone_number: str, form_data: dict, bot) -> None:
+    """
+    Handle Buy Bundle Flow completion (nfm_reply from WhatsApp Flows terminal screen).
+
+    The form_data comes from the 'complete' action payload defined in buy_bundle_flow.json:
+      - selected_network:   e.g. "MTN"
+      - selected_bundle_id: backend bundle UUID
+      - recipient_phone:    normalised E.164 phone
+      - summary_bundle:     human-readable bundle label
+      - summary_price:      human-readable price string
+
+    Args:
+        phone_number: Buyer's WhatsApp phone (already normalised by caller)
+        form_data:    Parsed nfm_reply.response_json
+        bot:          WhatsAppBot instance
+    """
+    normalized_phone = normalize_phone_number(phone_number)
+    notifier = WhatsAppNotifierService()
+
+    try:
+        selected_network   = form_data.get("selected_network", "")
+        selected_bundle_id = form_data.get("selected_bundle_id", "")
+        recipient_phone    = form_data.get("recipient_phone", "").strip()
+        bundle_label       = form_data.get("summary_bundle", "")
+        price_label        = form_data.get("summary_price", "")
+
+        if not selected_bundle_id or not recipient_phone:
+            await bot.send_main_menu(
+                normalized_phone,
+                "❌ Incomplete order data received. Please try again."
+            )
+            return
+
+        await notifier.send_text_message(
+            normalized_phone,
+            "⏳ Processing your order..."
+        )
+
+        # Get user
+        user_service = UserService()
+        user = await user_service.get_user_by_whatsapp_phone(normalized_phone)
+        if not user:
+            await bot.send_main_menu(
+                normalized_phone,
+                "❌ User not found. Please type 'hi' to register."
+            )
+            return
+
+        # Check wallet balance
+        wallet_service = WalletService()
+        try:
+            balance = await wallet_service.get_balance(user["id"])
+            # Extract numeric price from summary_price (e.g. "GHS 5.00" -> 5.00)
+            bundle_price = Decimal("0")
+            if price_label:
+                try:
+                    bundle_price = Decimal(price_label.replace("GHS", "").strip())
+                except Exception:
+                    pass
+
+            if bundle_price > 0 and balance < bundle_price:
+                await bot.send_main_menu(
+                    normalized_phone,
+                    (
+                        f"❌ Insufficient balance.\n\n"
+                        f"Your balance: GHS {balance}\n"
+                        f"Required: {price_label}\n\n"
+                        f"Please deposit funds to continue."
+                    )
+                )
+                return
+        except Exception as e:
+            logger.error(f"Balance check error: {e}", exc_info=True)
+
+        # Place the order via backend API
+        try:
+            auth_headers = BackendAPIClient.get_auth_headers(
+                user_id=normalized_phone,
+                platform="whatsapp"
+            )
+            max_retries = 2
+            for attempt in range(max_retries + 1):
+                try:
+                    client = BackendAPIClient.get_client()
+                    response = await client.post(
+                        f"{settings.BACKEND_API_URL}/api/v1/orders",
+                        json={
+                            "user_id": str(user["id"]),
+                            "bundle_id": selected_bundle_id,
+                            "phone": recipient_phone,
+                        },
+                        headers=auth_headers,
+                    )
+                    response.raise_for_status()
+                    break
+                except (httpx.RemoteProtocolError, httpx.ConnectError):
+                    if attempt < max_retries:
+                        await BackendAPIClient.reset_client()
+                    else:
+                        raise
+
+            data = response.json()
+            if data.get("status") == "success":
+                order = data.get("order", {})
+                vendor_ref = order.get("vendor_reference", "N/A")
+                network_display = NETWORK_DISPLAY.get(selected_network, selected_network)
+                await bot.send_main_menu(
+                    normalized_phone,
+                    (
+                        f"✅ Order Placed Successfully!\n\n"
+                        f"Network: {network_display}\n"
+                        f"Bundle: {bundle_label}\n"
+                        f"Phone: {recipient_phone}\n"
+                        f"Price: {price_label}\n"
+                        f"Status: {order.get('status', 'pending')}\n"
+                        f"Ref: {vendor_ref}\n\n"
+                        f"Your bundle will be delivered shortly."
+                    )
+                )
+            else:
+                error_msg = data.get("message", "Unknown error")
+                logger.error(f"Order failed: {error_msg}")
+                await bot.send_main_menu(
+                    normalized_phone,
+                    "❌ Order failed. Please try again or contact support."
+                )
+
+        except httpx.HTTPStatusError as e:
+            try:
+                error_data = e.response.json()
+                error_msg = error_data.get("detail", str(e))
+            except Exception:
+                error_msg = str(e)
+            logger.error(f"Order HTTP error: {error_msg}")
+            await bot.send_main_menu(
+                normalized_phone,
+                "❌ Order failed. Please try again or contact support."
+            )
+
+    except Exception as e:
+        logger.error(f"Error in bundles handle_flow_completion: {e}", exc_info=True)
+        await notifier.send_text_message(
+            normalized_phone,
+            "❌ An error occurred. Please try again."
+        )

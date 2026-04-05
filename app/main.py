@@ -28,6 +28,7 @@ from bot.telegram_bot import start_webhook_mode, stop_webhook_mode
 from app.api.v1.webhooks.telegram_webhook import set_bot_application
 from app.api.v1.webhooks.paystack import router as paystack_webhook_router
 from app.api.v1.webhooks.whatsapp import router as whatsapp_webhook_router
+from app.api.v1.webhooks.whatsapp_flow import router as whatsapp_flow_router
 from app.api.v1.webhooks.telegram_webhook import router as telegram_webhook_router
 
 
@@ -189,6 +190,7 @@ app.include_router(users_router, prefix="/api/v1/users", tags=["users"])
 app.include_router(bundles_router, prefix="/api/v1/bundles", tags=["bundles"])
 app.include_router(paystack_webhook_router, prefix="/api/v1/webhooks/paystack", tags=["webhooks"])
 app.include_router(whatsapp_webhook_router, prefix="/api/v1/webhooks/whatsapp", tags=["webhooks"])
+app.include_router(whatsapp_flow_router, prefix="/api/v1/webhooks/whatsapp/flow", tags=["webhooks"])
 app.include_router(telegram_webhook_router, prefix="/api/v1/webhooks/telegram", tags=["webhooks"])
 app.include_router(admin_router, prefix="/api/v1/admin", tags=["admin"])
 app.include_router(system_router, prefix="/api/v1/system", tags=["system"])

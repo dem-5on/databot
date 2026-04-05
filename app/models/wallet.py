@@ -1,9 +1,8 @@
-from sqlalchemy import Column, Numeric, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship
 import uuid
-
 from app.db.base import Base
+from sqlalchemy.orm import relationship
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, Numeric, ForeignKey
 
 
 class Wallet(Base):

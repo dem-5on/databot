@@ -1,8 +1,13 @@
 """Broadcast tasks for sending messages to users."""
 import asyncio
 import logging
-
+from telegram import Bot
+from app.core.config import settings
 from app.celery_app import celery_app
+from app.services.whatsapp_notifier import WhatsAppNotifierService
+from app.repository.telegram_user_repo import TelegramUserRepository
+from app.repository.whatsapp_user_repo import WhatsAppUserRepository
+
 
 logger = logging.getLogger(__name__)
 
@@ -28,9 +33,6 @@ def broadcast_telegram(self, message: str, user_ids: list = None, batch_size: in
         batch_size: Number of users per batch
         interval_seconds: Seconds to wait between batches
     """
-    from telegram import Bot
-    from app.core.config import settings
-    from app.repository.telegram_user_repo import TelegramUserRepository
     
     async def _broadcast():
         bot = Bot(token=settings.TELEGRAM_BOT_TOKEN)
@@ -90,8 +92,7 @@ def broadcast_whatsapp(self, message: str, user_ids: list = None, batch_size: in
         batch_size: Number of users per batch
         interval_seconds: Seconds to wait between batches
     """
-    from app.services.whatsapp_notifier import WhatsAppNotifierService
-    from app.repository.whatsapp_user_repo import WhatsAppUserRepository
+    
     
     async def _broadcast():
         notifier = WhatsAppNotifierService()

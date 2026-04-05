@@ -1,0 +1,306 @@
+{
+  "version": "6.1",
+  "data_api_version": "3.0",
+  "routing_model": {
+    "NETWORK_SCREEN": ["BUNDLE_SCREEN"],
+    "BUNDLE_SCREEN": ["PHONE_SCREEN"],
+    "PHONE_SCREEN": ["CONFIRM_SCREEN"],
+    "CONFIRM_SCREEN": []
+  },
+  "screens": [
+    {
+      "id": "NETWORK_SCREEN",
+      "title": "Buy Data Bundle",
+      "data": {
+        "networks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "title": { "type": "string" }
+            }
+          },
+          "__example__": [
+            { "id": "MTN", "title": "MTN" },
+            { "id": "TELECEL", "title": "Telecel" },
+            { "id": "AIRTELTIGO", "title": "AirtelTigo" }
+          ]
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "network_form",
+            "children": [
+              {
+                "type": "TextHeading",
+                "text": "🌐 Select Network"
+              },
+              {
+                "type": "TextBody",
+                "text": "Choose your network provider to view available data bundles."
+              },
+              {
+                "type": "RadioButtonsGroup",
+                "name": "selected_network",
+                "label": "Network Provider",
+                "required": true,
+                "data-source": "${data.networks}"
+              },
+              {
+                "type": "Footer",
+                "label": "Next",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": {
+                    "selected_network": "${form.selected_network}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "BUNDLE_SCREEN",
+      "title": "Select Bundle",
+      "data": {
+        "network_name": {
+          "type": "string",
+          "__example__": "MTN"
+        },
+        "bundles": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "title": { "type": "string" },
+              "description": { "type": "string" }
+            }
+          },
+          "__example__": [
+            { "id": "bundle_1", "title": "1GB - GHS 5.00", "description": "Valid for 24 hours" },
+            { "id": "bundle_2", "title": "2GB - GHS 9.00", "description": "Valid for 7 days" }
+          ]
+        },
+        "selected_network": {
+          "type": "string",
+          "__example__": "MTN"
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "bundle_form",
+            "children": [
+              {
+                "type": "TextHeading",
+                "text": "📱 Choose a Bundle"
+              },
+              {
+                "type": "TextBody",
+                "text": "${data.network_name} data bundles"
+              },
+              {
+                "type": "Dropdown",
+                "name": "selected_bundle_id",
+                "label": "Select Bundle",
+                "required": true,
+                "data-source": "${data.bundles}"
+              },
+              {
+                "type": "Footer",
+                "label": "Next",
+                "on-click-action": {
+                  "name": "navigate",
+                  "next": {
+                    "type": "screen",
+                    "name": "PHONE_SCREEN"
+                  },
+                  "payload": {
+                    "selected_network": "${data.selected_network}",
+                    "selected_bundle_id": "${form.selected_bundle_id}",
+                    "bundles": "${data.bundles}",
+                    "network_name": "${data.network_name}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "PHONE_SCREEN",
+      "title": "Recipient Number",
+      "data": {
+        "selected_network": {
+          "type": "string",
+          "__example__": "MTN"
+        },
+        "selected_bundle_id": {
+          "type": "string",
+          "__example__": "bundle_1"
+        },
+        "bundles": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "title": { "type": "string" },
+              "description": { "type": "string" }
+            }
+          },
+          "__example__": []
+        },
+        "network_name": {
+          "type": "string",
+          "__example__": "MTN"
+        },
+        "bundle_summary": {
+          "type": "string",
+          "__example__": "1GB - GHS 5.00"
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "phone_form",
+            "children": [
+              {
+                "type": "TextHeading",
+                "text": "📲 Enter Recipient Number"
+              },
+              {
+                "type": "TextBody",
+                "text": "⚠️ Bundle sent to wrong number will NOT be refunded. Double check the number below."
+              },
+              {
+                "type": "TextBody",
+                "text": "Bundle: ${data.bundle_summary}"
+              },
+              {
+                "type": "TextInput",
+                "name": "recipient_phone",
+                "label": "Phone Number",
+                "input-type": "phone",
+                "required": true,
+                "helper-text": "Format: 0XXXXXXXXX or 233XXXXXXXXX"
+              },
+              {
+                "type": "Footer",
+                "label": "Next: Confirm",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": {
+                    "selected_network": "${data.selected_network}",
+                    "selected_bundle_id": "${data.selected_bundle_id}",
+                    "bundles": "${data.bundles}",
+                    "network_name": "${data.network_name}",
+                    "bundle_summary": "${data.bundle_summary}",
+                    "recipient_phone": "${form.recipient_phone}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "CONFIRM_SCREEN",
+      "title": "Confirm Purchase",
+      "terminal": true,
+      "success": true,
+      "data": {
+        "summary_network": {
+          "type": "string",
+          "__example__": "MTN"
+        },
+        "summary_bundle": {
+          "type": "string",
+          "__example__": "1GB - GHS 5.00"
+        },
+        "summary_phone": {
+          "type": "string",
+          "__example__": "0241234567"
+        },
+        "summary_price": {
+          "type": "string",
+          "__example__": "GHS 5.00"
+        },
+        "selected_network": {
+          "type": "string",
+          "__example__": "MTN"
+        },
+        "selected_bundle_id": {
+          "type": "string",
+          "__example__": "bundle_1"
+        },
+        "recipient_phone": {
+          "type": "string",
+          "__example__": "233241234567"
+        }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "confirm_form",
+            "children": [
+              {
+                "type": "TextHeading",
+                "text": "✅ Confirm Your Order"
+              },
+              {
+                "type": "TextSubheading",
+                "text": "Order Summary"
+              },
+              {
+                "type": "TextBody",
+                "text": "Network: ${data.summary_network}"
+              },
+              {
+                "type": "TextBody",
+                "text": "Bundle: ${data.summary_bundle}"
+              },
+              {
+                "type": "TextBody",
+                "text": "Phone: ${data.summary_phone}"
+              },
+              {
+                "type": "TextBody",
+                "text": "Price: ${data.summary_price}"
+              },
+              {
+                "type": "Footer",
+                "label": "Buy Now 🛒",
+                "on-click-action": {
+                  "name": "complete",
+                  "payload": {
+                    "selected_network": "${data.selected_network}",
+                    "selected_bundle_id": "${data.selected_bundle_id}",
+                    "recipient_phone": "${data.recipient_phone}",
+                    "summary_price": "${data.summary_price}",
+                    "summary_bundle": "${data.summary_bundle}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

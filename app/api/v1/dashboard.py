@@ -10,8 +10,11 @@ from app.repository.order_repo import OrderRepository
 from app.repository.bundle_repo import BundleRepository
 from app.repository.wallet_repo import WalletRepository
 from fastapi import APIRouter, HTTPException, Depends, Query
+from app.tasks import broadcast_telegram, broadcast_whatsapp
 from app.repository.base_user_repo import BaseUserRepository
 from app.repository.transaction_repo import TransactionRepository
+from app.repository.telegram_user_repo import TelegramUserRepository
+from app.repository.whatsapp_user_repo import WhatsAppUserRepository
 from app.utils.security_utils import safe_error_response, validate_uuid_format
 
 logger = logging.getLogger(__name__)
@@ -88,11 +91,6 @@ async def list_dashboard_users(
     """
     user_repo = BaseUserRepository()
     wallet_repo = WalletRepository()
-    
-    # Import platform-specific repos
-    from app.repository.telegram_user_repo import TelegramUserRepository
-    from app.repository.whatsapp_user_repo import WhatsAppUserRepository
-    
     telegram_repo = TelegramUserRepository()
     whatsapp_repo = WhatsAppUserRepository()
     
@@ -184,11 +182,6 @@ async def list_dashboard_transactions(
     List recent transactions with user identifiers.
     """
     transaction_repo = TransactionRepository()
-    
-    # Import platform-specific repos for user lookup
-    from app.repository.telegram_user_repo import TelegramUserRepository
-    from app.repository.whatsapp_user_repo import WhatsAppUserRepository
-    
     telegram_repo = TelegramUserRepository()
     whatsapp_repo = WhatsAppUserRepository()
     
@@ -539,10 +532,7 @@ async def get_revenue_chart_data(_: str = Depends(verify_dashboard_token)):
             t for t in all_deposits 
             if t["status"] == "success" or t["status"] == "completed"
         ]
-        
-        # Group by day for the last 7 days
-        from datetime import datetime, timedelta
-        
+                
         today = datetime.utcnow().date()
         days = []
         
@@ -667,10 +657,6 @@ async def get_recent_activity(
                 "created_at": order.get("created_at"),
             })
         
-        # Get recent users from platforms
-        from app.repository.telegram_user_repo import TelegramUserRepository
-        from app.repository.whatsapp_user_repo import WhatsAppUserRepository
-        
         telegram_repo = TelegramUserRepository()
         whatsapp_repo = WhatsAppUserRepository()
         
@@ -697,9 +683,7 @@ async def get_recent_activity(
         # Sort all activities by created_at and limit
         activities.sort(key=lambda x: x.get("created_at", ""), reverse=True)
         activities = activities[:limit]
-        
-        # Calculate relative time
-        from datetime import datetime
+                
         now = datetime.utcnow()
         
         for activity in activities:
@@ -843,9 +827,6 @@ async def delete_user(
         raise HTTPException(status_code=404, detail="User not found")
     
     try:
-        # Delete from telegram/whatsapp tables first to avoid FK issues
-        from app.repository.telegram_user_repo import TelegramUserRepository
-        from app.repository.whatsapp_user_repo import WhatsAppUserRepository
         
         telegram_repo = TelegramUserRepository()
         whatsapp_repo = WhatsAppUserRepository()
@@ -984,7 +965,6 @@ async def broadcast_message(
     - **batch_size**: How many users to message per batch (default: 20)
     - **interval_seconds**: Wait time between batches (default: 300 = 5 min)
     """
-    from app.tasks import broadcast_telegram, broadcast_whatsapp
     
     # Parse user_ids if provided
     parsed_user_ids = None

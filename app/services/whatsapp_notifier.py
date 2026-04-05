@@ -17,6 +17,7 @@ class WhatsAppNotifierService:
         self.access_token = settings.WHATSAPP_ACCESS_TOKEN
         self.api_url = settings.WHATSAPP_API_URL
         self.base_url = f"{self.api_url}/{self.phone_number_id}"
+        self.flow_mode = settings.WHATSAPP_FLOW_MODE
         
         # Ensure shared client is initialized
         self._ensure_client()
@@ -259,4 +260,94 @@ class WhatsAppNotifierService:
                 success = True
         
         return success
+
+    async def send_flow_message(
+        self,
+        phone_number: str,
+        body_text: str,
+        cta_text: str,
+        flow_id: str,
+        flow_token: str,
+        screen_id: str = "NETWORK_SCREEN",
+        flow_action: str = "navigate",
+        initial_data: dict = None,
+    ) -> bool:
+        """
+        Send a WhatsApp Flows CTA message to open a Flow inside the chat.
+
+        Args:
+            phone_number: Recipient phone number in E.164 format
+            body_text:    Message body shown before the CTA button
+            cta_text:     Label on the CTA button (e.g. "Open Form")
+            flow_id:      Meta-assigned Flow ID
+            flow_token:   A unique token per flow session (use UUID or phone-based token)
+            screen_id:    The initial screen to display (default: NETWORK_SCREEN)
+            flow_action:  "navigate" (default) or "data_exchange" for server-driven initial screen
+            initial_data: Optional dict of data to pass to the initial screen
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Build parameters — flow_action_payload is ONLY valid for
+            # "navigate" flows (pointing to a specific starting screen).
+            # For "data_exchange" flows it must be omitted entirely or Meta
+            # returns error #131009 "Parameter value is not valid".
+            parameters: dict = {
+                "flow_message_version": "3",
+                "flow_token": flow_token,
+                "flow_id": flow_id,
+                "flow_cta": cta_text,
+                "flow_action": flow_action,
+                "mode": self.flow_mode,
+            }
+
+            if flow_action == "navigate":
+                action_payload: dict = {"screen": screen_id}
+                if initial_data:
+                    action_payload["data"] = initial_data
+                parameters["flow_action_payload"] = action_payload
+
+            payload = {
+                "messaging_product": "whatsapp",
+                "recipient_type": "individual",
+                "to": phone_number,
+                "type": "interactive",
+                "interactive": {
+                    "type": "flow",
+                    "body": {"text": body_text},
+                    "action": {
+                        "name": "flow",
+                        "parameters": parameters,
+                    },
+                },
+            }
+
+
+            response = await self._client.post(
+                f"{self.base_url}/messages",
+                json=payload,
+                headers=self._get_headers(),
+            )
+            response.raise_for_status()
+            result = response.json()
+            if result.get("messages"):
+                logger.info(f"Sent WhatsApp Flow message to {phone_number} (flow_id={flow_id})")
+                return True
+            else:
+                logger.error(f"Failed to send Flow message: {result}")
+                return False
+
+        except httpx.HTTPStatusError as e:
+            try:
+                error_data = e.response.json()
+                error_msg = error_data.get("error", {}).get("message", str(e))
+            except Exception:
+                error_msg = str(e)
+            logger.error(f"HTTP error sending Flow message to {phone_number}: {error_msg}")
+            return False
+        except Exception as e:
+            logger.error(f"Error sending Flow message to {phone_number}: {e}")
+            return False
+
 

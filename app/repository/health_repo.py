@@ -1,12 +1,13 @@
+import logging
 from app.repository.base import BaseRepository
 from datetime import datetime, timedelta, timezone
-import logging
 
 logger = logging.getLogger(__name__)
 
 class HealthLogRepository(BaseRepository):
     def __init__(self):
         super().__init__("health_logs")
+
 
     async def log_health(self, service_name: str, status: str, latency_ms: int):
         """Log a health check result."""

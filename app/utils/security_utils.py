@@ -1,5 +1,7 @@
 import re
 import logging
+import hmac
+from urllib.parse import urlparse
 from typing import Any, Dict, Optional, Set
 
 logger = logging.getLogger(__name__)
@@ -239,7 +241,6 @@ def constant_time_compare(a: str, b: str) -> bool:
     Returns:
         True if strings are equal
     """
-    import hmac
     return hmac.compare_digest(a.encode('utf-8'), b.encode('utf-8'))
 
 
@@ -269,7 +270,6 @@ def validate_backend_url(url: str) -> bool:
     Raises:
         ValueError: If URL is not allowed
     """
-    from urllib.parse import urlparse
     
     parsed = urlparse(url)
     host = parsed.hostname or ""

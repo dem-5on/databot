@@ -1,4 +1,3 @@
-"""Bundle sync API endpoints using Supabase repositories."""
 from fastapi import APIRouter
 from app.services.bundle_sync import BundleSyncService
 

@@ -1,4 +1,5 @@
 import httpx
+import uuid
 import asyncio
 import logging
 from decimal import Decimal
@@ -21,33 +22,51 @@ NETWORK_PREFIXES = {
 
 async def start(phone_number: str, bot) -> None:
     """
-    Start deposit flow.
-    
-    Args:
-        phone_number: User's phone number
-        bot: WhatsAppBot instance
+    Start the Deposit flow.
+
+    If WHATSAPP_DEPOSIT_FLOW_ID is configured, launches the native
+    WhatsApp Flow for a smooth amount + MoMo phone collection experience.
+    Falls back to the legacy text-based menu if the Flow ID is not set.
     """
     try:
         normalized_phone = normalize_phone_number(phone_number)
         notifier = WhatsAppNotifierService()
 
-        # Set state to deposit amount
-        bot.set_user_state(normalized_phone, bot.STATE_DEPOSIT_AMOUNT)
-        
-        await notifier.send_interactive_message(
-            normalized_phone,
-            (
-                "➕ Deposit Funds\n\n"
-                "Please enter the amount you want to deposit (GHS):\n"
-                "Example: 50.00\n\n"
-            ),
-            get_back_cancel_buttons()
-        )
-        
+        flow_id = settings.WHATSAPP_DEPOSIT_FLOW_ID
+        if flow_id:
+            # Use WhatsApp Flows (native interactive form)
+            flow_token = f"deposit_{normalized_phone}_{uuid.uuid4().hex[:8]}"
+            await notifier.send_flow_message(
+                phone_number=normalized_phone,
+                body_text=(
+                    "💰 *Deposit Funds*\n\n"
+                    "Top up your wallet with Mobile Money. "
+                    "Fill in the amount and your MoMo number, then approve the prompt."
+                ),
+                cta_text="Open Deposit Form",
+                flow_id=flow_id,
+                flow_token=flow_token,
+                screen_id="AMOUNT_SCREEN",
+                flow_action="data_exchange",
+            )
+        else:
+            # Fallback: legacy text-based deposit flow
+            bot.set_user_state(normalized_phone, bot.STATE_DEPOSIT_AMOUNT)
+            await notifier.send_interactive_message(
+                normalized_phone,
+                (
+                    "➕ Deposit Funds\n\n"
+                    "Please enter the amount you want to deposit (GHS):\n"
+                    "Example: 50.00\n\n"
+                ),
+                get_back_cancel_buttons()
+            )
+
     except Exception as e:
         logger.error(f"Error in deposit start: {str(e)}", exc_info=True)
-        await bot.notifier.send_text_message(
-            normalized_phone,
+        notifier = WhatsAppNotifierService()
+        await notifier.send_text_message(
+            normalize_phone_number(phone_number),
             "❌ An error occurred. Please try again later."
         )
 
@@ -541,3 +560,164 @@ async def handle_otp(phone_number: str, otp: str, bot) -> None:
             "❌ An error occurred, Please enter the correct OTP or try again later."
         )
         bot.clear_user_state(normalized_phone)
+
+
+async def handle_flow_completion(phone_number: str, form_data: dict, bot) -> None:
+    """
+    Handle Deposit Flow completion (nfm_reply from WhatsApp Flows terminal screen).
+
+    The form_data comes from the 'complete' action payload defined in deposit_flow.json:
+      - deposit_amount: amount as a string (e.g. "50")
+      - momo_network:   network ID (e.g. "MTN")
+      - momo_phone:     phone number entered by user
+
+    After this call the bot transitions the user to STATE_DEPOSIT_OTP so the
+    existing handle_otp() handler picks up the OTP they type in the chat.
+
+    Args:
+        phone_number: Depositor's WhatsApp phone (already normalised by caller)
+        form_data:    Parsed nfm_reply.response_json
+        bot:          WhatsAppBot instance
+    """
+    normalized_phone = normalize_phone_number(phone_number)
+    notifier = WhatsAppNotifierService()
+
+    try:
+        amount_str   = str(form_data.get("deposit_amount", "")).strip()
+        momo_network = form_data.get("momo_network", "").strip().upper()
+        momo_phone   = form_data.get("momo_phone", "").strip()
+
+        # --- Validate -------------------------------------------------------
+        if not amount_str or not momo_phone:
+            await bot.send_main_menu(
+                normalized_phone,
+                "❌ Incomplete deposit data received. Please try again."
+            )
+            return
+
+        try:
+            amount = Decimal(amount_str)
+        except Exception:
+            await bot.send_main_menu(normalized_phone, "❌ Invalid amount. Please try again.")
+            return
+
+        is_valid, error_msg = validate_phone_number(momo_phone)
+        if not is_valid:
+            await bot.send_main_menu(normalized_phone, f"❌ {error_msg}")
+            return
+
+        normalized_momo_phone = normalize_phone_number(momo_phone)
+
+        # Validate / auto-detect network
+        if not momo_network:
+            phone_local = normalize_phone_to_local(momo_phone)
+            momo_network = detect_network(phone_local) or ""
+        if not momo_network:
+            await bot.send_main_menu(
+                normalized_phone,
+                (
+                    "❌ Could not detect MoMo network.\n"
+                    "Supported: MTN (024/054/055/059/053), Telecel (020/050), AirtelTigo (026/027/056/057)."
+                )
+            )
+            return
+
+        # --- Get user -------------------------------------------------------
+        from app.services.user_service import UserService
+        user_service = UserService()
+        user = await user_service.get_user_by_whatsapp_phone(normalized_phone)
+        if not user:
+            await bot.send_main_menu(
+                normalized_phone,
+                "❌ User not found. Please type 'hi' to register."
+            )
+            return
+
+        # --- Initiate deposit via backend API --------------------------------
+        await notifier.send_text_message(
+            normalized_phone,
+            "⏳ Initiating deposit..."
+        )
+
+        NETWORK_DISPLAY = {"MTN": "MTN", "TELECEL": "Telecel", "AIRTELTIGO": "AirtelTigo"}
+
+        max_retries = 2
+        for attempt in range(max_retries + 1):
+            try:
+                client = BackendAPIClient.get_client()
+                auth_headers = BackendAPIClient.get_auth_headers(str(user["id"]), "whatsapp")
+                response = await client.post(
+                    f"{settings.BACKEND_API_URL}/api/v1/wallet/deposit/init",
+                    json={
+                        "user_id": str(user["id"]),
+                        "amount": float(amount),
+                        "phone": normalized_momo_phone,
+                        "provider": momo_network,
+                    },
+                    headers=auth_headers,
+                )
+                response.raise_for_status()
+                break
+            except (httpx.RemoteProtocolError, httpx.ConnectError):
+                if attempt < max_retries:
+                    await BackendAPIClient.reset_client()
+                else:
+                    raise
+
+        data = response.json()
+        paystack_response = data.get("paystack_response", {})
+        paystack_data = paystack_response.get("data", {})
+        display_text = (
+            paystack_data.get("display_text")
+            or data.get("display_text")
+            or "Please approve the mobile money prompt on your phone."
+        )
+        reference = data.get("reference", "N/A")
+
+        if not reference or reference == "N/A":
+            raise ValueError("Failed to get transaction reference from server")
+
+        # --- Transition to OTP state (text chat picks it up) -----------------
+        bot.set_user_state(
+            normalized_phone,
+            bot.STATE_DEPOSIT_OTP,
+            data={
+                "deposit_amount": str(amount),
+                "deposit_phone": normalized_momo_phone,
+                "deposit_provider": momo_network,
+                "deposit_reference": reference,
+                "deposit_user_id": str(user["id"]),
+            }
+        )
+
+        await notifier.send_interactive_message(
+            normalized_phone,
+            (
+                f"✅ Deposit Initiated\n\n"
+                f"Network: {NETWORK_DISPLAY.get(momo_network, momo_network)}\n"
+                f"Amount: GHS {amount}\n"
+                f"Phone: {normalized_momo_phone}\n\n"
+                f"{display_text}\n\n"
+                f"OR go to *My Approvals* on your phone to approve.\n\n"
+                f"📝 *Please type the OTP* sent to your phone in the chat below to confirm."
+            ),
+            get_back_cancel_buttons()
+        )
+
+    except httpx.HTTPStatusError as e:
+        try:
+            error_data = e.response.json()
+            error_msg = error_data.get("detail", str(e))
+        except Exception:
+            error_msg = str(e)
+        logger.error(f"Deposit init failed (flow): {error_msg}")
+        await bot.send_main_menu(
+            normalized_phone,
+            "❌ Deposit initiation failed. Please try again."
+        )
+    except Exception as e:
+        logger.error(f"Error in deposit handle_flow_completion: {e}", exc_info=True)
+        await notifier.send_text_message(
+            normalized_phone,
+            "❌ An error occurred. Please try again later."
+        )

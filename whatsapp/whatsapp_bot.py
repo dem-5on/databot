@@ -139,13 +139,17 @@ class WhatsAppBot:
             if message_type == "interactive":
                 interactive = message.get("interactive", {})
                 interactive_type = interactive.get("type")
-                
+
                 if interactive_type == "button_reply":
                     button_id = interactive.get("button_reply", {}).get("id")
                     await self.process_button_click(from_phone, button_id, message_id)
                 elif interactive_type == "list_reply":
                     list_id = interactive.get("list_reply", {}).get("id")
                     await self.process_button_click(from_phone, list_id, message_id)
+                elif interactive_type == "nfm_reply":
+                    # WhatsApp Flows completion callback
+                    nfm_reply = interactive.get("nfm_reply", {})
+                    await self._handle_flow_completion(from_phone, nfm_reply, message_id)
                 return
             
             # Handle text messages
@@ -318,7 +322,7 @@ class WhatsAppBot:
             else:
                 logger.warning(f"Unknown button ID: {button_id}")
                 await start.start_handler(normalized_phone, self)
-                
+
         except Exception as e:
             logger.error(f"Error processing button click: {str(e)}", exc_info=True)
             await self.notifier.send_text_message(
@@ -326,5 +330,58 @@ class WhatsAppBot:
                 "❌ An error occurred. Please try again or type 'help' for assistance."
             )
 
+    async def _handle_flow_completion(self, phone_number: str, nfm_reply: Dict[str, Any], message_id: str) -> None:
+        """
+        Handle a WhatsApp Flows completion (nfm_reply).
 
+        When a user completes a Flow (taps the terminal footer button),
+        WhatsApp delivers the collected form data here as an interactive
+        message of type 'nfm_reply'.
 
+        Args:
+            phone_number: Sender phone number
+            nfm_reply:   The nfm_reply dict from the interactive message
+            message_id:  WhatsApp message ID
+        """
+        try:
+            normalized_phone = normalize_phone_number(phone_number)
+
+            # The submitted form data is JSON-encoded in response_json
+            import json as _json
+            response_json_str = nfm_reply.get("response_json", "{}")
+            try:
+                form_data = _json.loads(response_json_str)
+            except Exception:
+                form_data = {}
+
+            flow_token = nfm_reply.get("flow_token", "")
+
+            logger.info(
+                f"Flow completion: phone={normalized_phone} "
+                f"flow_token={flow_token} data_keys={list(form_data.keys())}"
+            )
+
+            # Determine which flow completed by content of submitted data
+            if "selected_bundle_id" in form_data or "recipient_phone" in form_data:
+                # Buy Bundle flow completed
+                await bundles.handle_flow_completion(normalized_phone, form_data, self)
+            elif "momo_phone" in form_data or "deposit_amount" in form_data:
+                # Deposit flow completed
+                await deposit.handle_flow_completion(normalized_phone, form_data, self)
+            else:
+                logger.warning(f"Unknown flow completion data: {form_data}")
+                await self.notifier.send_text_message(
+                    normalized_phone,
+                    "⚠️ We received your submission but couldn't process it. Please type 'menu' to continue."
+                )
+
+        except Exception as e:
+            logger.error(f"Error handling flow completion: {e}", exc_info=True)
+            try:
+                normalized_phone = normalize_phone_number(phone_number)
+                await self.notifier.send_text_message(
+                    normalized_phone,
+                    "❌ An error occurred processing your submission. Please try again or type 'menu'."
+                )
+            except Exception:
+                pass

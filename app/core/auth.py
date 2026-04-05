@@ -1,20 +1,11 @@
-"""
-Authentication and authorization utilities for the API.
-
-This module provides FastAPI dependencies for:
-- Verifying bot requests with HMAC signatures (with timestamp validation)
-- Extracting user identity from headers
-- Authorizing access to user-specific resources
-- Validating admin API keys
-"""
-
 import hmac
 import time
 import hashlib
 import logging
 from typing import Optional
-from fastapi import Header, HTTPException, Depends
 from app.core.config import settings
+from app.repository.admin_token_repo import AdminTokenRepository
+from fastapi import Header, HTTPException, Depends
 
 logger = logging.getLogger(__name__)
 
@@ -283,7 +274,6 @@ async def verify_dashboard_token(
     # 2. Check Database Tokens
     try:
         # Import here to avoid circular dependencies
-        from app.repository.admin_token_repo import AdminTokenRepository
         token_repo = AdminTokenRepository()
         if await token_repo.validate_token(x_dashboard_token):
             logger.debug("Dashboard access via database token")

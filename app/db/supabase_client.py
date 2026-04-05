@@ -189,7 +189,7 @@ class AsyncTableWrapper:
             raise
 
 
-# Initialize the synchronous Supabase client
+# Initialize the synchronous Supabase client (anon/public key)
 try:
     _sync_client: Client = create_client(
         settings.SUPABASE_URL,
@@ -203,8 +203,32 @@ except Exception as e:
         "Please check SUPABASE_URL and SUPABASE_KEY environment variables."
     ) from e
 
-# Create the async wrapper instance
+# Create the async wrapper instance (anon key — respects RLS)
 supabase = AsyncSupabaseClient(_sync_client)
 
 # Also export the sync client for cases where you need it
 supabase_sync = _sync_client
+
+
+# Initialize a service-role client that bypasses RLS for server-side operations
+if settings.SUPABASE_SERVICE_KEY:
+    try:
+        _service_sync_client: Client = create_client(
+            settings.SUPABASE_URL,
+            settings.SUPABASE_SERVICE_KEY
+        )
+        supabase_admin = AsyncSupabaseClient(_service_sync_client)
+        supabase_admin_sync = _service_sync_client
+        logger.info("Supabase admin (service role) client initialized successfully")
+    except Exception as e:
+        logger.warning(f"Failed to initialize Supabase admin client: {e}. Falling back to anon client.")
+        supabase_admin = supabase
+        supabase_admin_sync = supabase_sync
+else:
+    logger.warning(
+        "SUPABASE_SERVICE_KEY not set — supabase_admin will use the anon key. "
+        "Server-side writes to RLS-protected tables (e.g. health_logs) will fail."
+    )
+    supabase_admin = supabase
+    supabase_admin_sync = supabase_sync
+
